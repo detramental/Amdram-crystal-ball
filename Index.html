@@ -1,0 +1,3201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laos Show Forecaster</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3B5BDB">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Laos Forecaster">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  :root {
+    --bg: #F4F5F7; --surface: #FFFFFF; --surface-alt: #EEF1F5;
+    --border: #D8DEE6; --text: #1F2933; --text-muted: #5C6773;
+    --primary: #3B5BDB; --primary-hover: #324DBF; --accent: #0EA5A0;
+    --success: #0F9D58; --danger: #D6353D; --warning: #F59F0A;
+    --chart-ticket: #3B5BDB; --chart-prog: #F59F0A;
+    --shadow: 0 2px 8px rgba(30,50,90,0.06);
+  }
+  [data-theme="dark"] {
+    --bg: #1B1F27; --surface: #242A34; --surface-alt: #2C333F;
+    --border: #3A424F; --text: #E7ECF3; --text-muted: #9AA5B4;
+    --primary: #6B8CFF; --primary-hover: #8AA3FF; --accent: #3ADFD9;
+    --success: #5CE0A0; --danger: #FF6B72; --warning: #FFC96B;
+    --chart-ticket: #6B8CFF; --chart-prog: #FFC96B;
+    --shadow: 0 2px 12px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px; transition: background .25s ease, color .25s ease;
+  }
+  header {
+    background: var(--surface-alt); padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px; border-bottom: 1px solid var(--border);
+  }
+  header .brand h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  header .brand p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+  .show-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .show-picker {
+    padding: 8px 14px; padding-right: 32px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    min-width: 220px; cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%235C6773' d='M0 0l5 6 5-6z'/></svg>");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  [data-theme="dark"] .show-picker {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%239AA5B4' d='M0 0l5 6 5-6z'/></svg>");
+  }
+  .toolbar {
+    display: flex; gap: 8px; padding: 12px 32px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; align-items: center;
+  }
+  .toolbar .spacer { flex: 1; }
+  button {
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    cursor: pointer; transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover { background: var(--surface-alt); }
+  button.primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
+  button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  button.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+  button.ghost:hover { background: var(--surface-alt); color: var(--text); }
+  button.install { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  button.success { background: var(--success); color: #fff; border-color: var(--success); font-weight: 600; }
+  button[hidden] { display: none !important; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .tabs {
+    display: flex; padding: 0 32px;
+    border-bottom: 1px solid var(--border); background: var(--bg); gap: 4px; flex-wrap: wrap;
+  }
+  .tabs button {
+    background: transparent; border: none; border-radius: 0;
+    padding: 12px 20px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-panel { display: none; padding: 20px 32px 40px; }
+  .tab-panel.active { display: block; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); gap: 20px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 16px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 18px 10px; font-size: 14px; font-weight: 600;
+    color: var(--text); border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .card-body { padding: 16px 18px 18px; }
+  label.field {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 6px 0; font-size: 13px; color: var(--text);
+  }
+  label.field span { flex: 1; }
+  input[type="text"], input[type="number"], select {
+    width: 120px; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--surface); color: var(--text);
+    text-align: right; font-family: inherit; font-size: 13px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input[type="text"], select { text-align: left; }
+  input:focus, select:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    background: var(--surface-alt); border-radius: 3px;
+    outline: none; cursor: pointer; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--surface);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--surface); cursor: pointer;
+  }
+  input[type="checkbox"] { accent-color: var(--primary); width: 18px; height: 18px; cursor: pointer; }
+
+  /* Ticket type chooser */
+  .ticket-type-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .ticket-type-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface);
+  }
+  .ticket-type-row.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
+  .ticket-type-row input[type="text"] { flex: 1; text-align: left; }
+  .ticket-type-row input[type="number"] { width: 90px; }
+  .ticket-type-row .type-name { flex: 1; font-weight: 500; }
+
+  /* Per-performance table (dynamic columns) */
+  .perf-table {
+    display: grid; gap: 6px 10px; align-items: center; font-size: 12.5px;
+    overflow-x: auto;
+  }
+  .perf-table .head {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    color: var(--text-muted); letter-spacing: 0.4px; padding: 4px 0 8px;
+  }
+  .perf-table input[type="number"], .perf-table input[type="text"] {
+    width: 100%; padding: 5px 8px; font-size: 12px;
+  }
+  .perf-num {
+    text-align: center; font-weight: 600; color: var(--text-muted);
+    background: var(--surface-alt); border-radius: 6px; padding: 4px 0;
+  }
+  .slider-cell { display: flex; align-items: center; gap: 8px; }
+  .slider-cell input[type="range"] { flex: 1; min-width: 60px; }
+  .slider-cell .pct {
+    font-variant-numeric: tabular-nums; min-width: 34px;
+    text-align: right; color: var(--text-muted); font-weight: 500;
+  }
+  .perf-income {
+    text-align: right; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--text);
+  }
+
+  .info-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; font-size: 12.5px;
+  }
+  .info-row .label { color: var(--text-muted); }
+  .info-row .value {
+    font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text);
+  }
+
+  .summary-section {
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+    border: 1px solid transparent;
+  }
+  .summary-section.income {
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  }
+  .summary-section.costs {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  }
+  .summary-section .section-heading {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; margin-bottom: 8px;
+  }
+  .summary-section.income .section-heading { color: var(--success); }
+  .summary-section.costs  .section-heading { color: var(--danger); }
+  .summary-section .line {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; font-size: 12.5px;
+  }
+  .summary-section .line .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .summary-section .subtotal {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 8px; margin-top: 6px;
+    border-top: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
+    font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;
+  }
+  .summary-section.income .subtotal { color: var(--success); }
+  .summary-section.costs  .subtotal { color: var(--danger); }
+
+  .totals-block {
+    background: var(--surface-alt); border-radius: 10px;
+    padding: 14px 16px; border: 1px solid var(--border);
+  }
+  .totals-block .totals-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; font-size: 13px;
+  }
+  .totals-block .totals-row .label { color: var(--text-muted); }
+  .totals-block .totals-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .totals-block .totals-row .value.pos { color: var(--success); }
+  .totals-block .totals-row .value.neg { color: var(--danger); }
+  .totals-block hr.split { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+  .totals-block .grand-row {
+    display: flex; justify-content: space-between; align-items: center; padding-top: 4px;
+  }
+  .totals-block .grand-row .label { font-size: 15px; font-weight: 700; }
+  .totals-block .grand-row .value {
+    font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+  .totals-block .grand-row .value.pos { color: var(--success); }
+  .totals-block .grand-row .value.neg { color: var(--danger); }
+
+  .help {
+    color: var(--text-muted); font-size: 12px; line-height: 1.5;
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  }
+
+  .chart-wrapper {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+  .chart-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  #chartCanvas, #cumulativeChart, #actualsChart { width: 100% !important; height: 380px !important; }
+  .compare-chart-canvas { width: 100% !important; height: 340px !important; }
+  .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .chart-subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+
+  .statusbar {
+    padding: 8px 32px; background: var(--surface-alt); color: var(--text-muted);
+    font-size: 12px; display: flex; justify-content: space-between;
+    border-top: 1px solid var(--border); gap: 12px; flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); font-size: 11px;
+  }
+  .badge.online { color: var(--success); }
+  .badge.offline { color: var(--warning); }
+
+  .cost-item {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 5px 0;
+  }
+  .cost-item span { color: var(--text); font-size: 13px; }
+  .cost-item input { width: 110px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }
+
+  /* Modal */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(15,20,30,0.55); backdrop-filter: blur(4px);
+    z-index: 200; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+    width: min(720px, 100%); max-height: 90vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .modal-header {
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    font-size: 16px; font-weight: 700;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
+  .modal-footer {
+    padding: 14px 22px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  }
+  .modal-footer .right { display: flex; gap: 8px; }
+  .shows-list { display: flex; flex-direction: column; gap: 8px; }
+  .show-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; background: var(--surface-alt);
+    border: 1px solid var(--border); border-radius: 9px;
+  }
+  .show-row.current { border-color: var(--primary); }
+  .show-row .name { flex: 1; font-weight: 600; }
+  .show-row .meta {
+    color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .show-row button { padding: 5px 10px; font-size: 12px; }
+  .status-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    margin-left: 6px; letter-spacing: 0.3px;
+  }
+  .status-pill.planning { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
+  .status-pill.in-run   { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+  .status-pill.completed{ background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+
+  /* Wizard */
+  .wizard-progress {
+    display: flex; gap: 4px; margin-bottom: 16px;
+  }
+  .wizard-step-dot {
+    flex: 1; height: 6px; background: var(--border);
+    border-radius: 3px; transition: background .2s;
+  }
+  .wizard-step-dot.done { background: var(--primary); }
+  .wizard-step-dot.current { background: var(--primary); }
+  .wizard-step-title {
+    font-size: 20px; font-weight: 700; margin: 0 0 4px;
+    color: var(--text);
+  }
+  .wizard-step-desc {
+    font-size: 13px; color: var(--text-muted); margin: 0 0 20px;
+  }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; }
+  .wizard-step .field-block {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .wizard-step .field-block:last-child { border-bottom: none; }
+  .wizard-step .field-block label {
+    font-weight: 500; font-size: 14px; flex: 1;
+  }
+  .wizard-step .field-block .desc {
+    font-size: 12px; color: var(--text-muted); margin-top: 2px;
+  }
+  .wizard-step input[type="number"], .wizard-step input[type="text"] {
+    width: 150px;
+  }
+  .wizard-step .field-block-full {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .wizard-cost-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px;
+    margin-top: 8px;
+  }
+  @media (max-width: 600px) { .wizard-cost-grid { grid-template-columns: 1fr; } }
+  .wizard-cost-item {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; padding: 4px 0;
+  }
+  .wizard-cost-item span { font-size: 13px; }
+  .wizard-cost-item input { width: 100px; }
+
+  /* Actuals tab */
+  .actuals-enable-banner {
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    border: 1px solid var(--primary);
+    border-radius: 10px; padding: 16px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  .actuals-enable-banner p { margin: 0; font-size: 13px; }
+  .actuals-status-controls {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 20px;
+    padding: 12px 16px; background: var(--surface-alt);
+    border-radius: 10px; border: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .actuals-status-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
+  table.variance {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  table.variance th, table.variance td {
+    padding: 8px 10px; text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  table.variance th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-muted); font-weight: 600; text-align: right;
+    background: var(--surface-alt);
+  }
+  table.variance th:first-child, table.variance td:first-child { text-align: left; }
+  table.variance .pos { color: var(--success); font-weight: 600; }
+  table.variance .neg { color: var(--danger); font-weight: 600; }
+  table.variance .section-row td {
+    background: var(--surface-alt); font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-muted);
+  }
+
+  /* Comparison */
+  .compare-layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+  @media (max-width: 900px) { .compare-layout { grid-template-columns: 1fr; } }
+  .compare-side {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; box-shadow: var(--shadow);
+    align-self: start; position: sticky; top: 20px;
+  }
+  .compare-checkboxes {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+    max-height: 340px; overflow-y: auto;
+  }
+  .compare-checkboxes label {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 13px;
+  }
+  .compare-checkboxes label:hover { background: var(--surface-alt); }
+  .compare-checkboxes .colour-swatch {
+    width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0;
+  }
+  table.compare { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.compare th, table.compare td {
+    padding: 10px 8px; text-align: right;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+  table.compare th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-muted); font-weight: 600; text-align: right;
+    background: var(--surface-alt);
+  }
+  table.compare th:first-child, table.compare td:first-child { text-align: left; }
+  table.compare tbody tr:hover { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+  table.compare .pos { color: var(--success); font-weight: 600; }
+  table.compare .neg { color: var(--danger); font-weight: 600; }
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px;
+  }
+
+  .info-panel {
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+    border-left: 3px solid var(--primary);
+    padding: 10px 14px; border-radius: 6px;
+    font-size: 12px; color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  .ios-hint {
+    display: none;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    font-size: 13px; max-width: 90%; z-index: 100;
+  }
+  .ios-hint.show { display: block; }
+  .ios-hint button { margin-left: 8px; padding: 4px 10px; font-size: 12px; }
+</style>
+</head>
+<body data-theme="light">
+
+<header>
+  <div class="brand">
+    <h1>🎭 Laos Show Forecaster</h1>
+    <p>Plan the numbers before you hit opening night.</p>
+  </div>
+  <div class="show-controls">
+    <select class="show-picker" id="showPicker" title="Switch show"></select>
+    <button id="manageShowsBtn" title="Manage shows">📁 Manage shows</button>
+    <button class="primary" id="quickWizardBtn" title="Configure show with wizard">🧙 Wizard</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <button class="ghost" id="themeBtn">🌙 Dark mode</button>
+  <button class="install" id="installBtn" hidden>⬇ Install app</button>
+  <div class="spacer"></div>
+  <button id="saveBtn">💾 Save</button>
+  <button id="loadBtn">📂 Load</button>
+  <button class="primary" id="exportExcelBtn">📊 Excel</button>
+  <button id="exportPdfBtn">📄 PDF</button>
+  <button id="exportChartBtn">🖼 Chart PNG</button>
+  <button class="danger" id="resetBtn">🗑 Reset</button>
+  <input type="file" id="loadFile" accept=".json" style="display:none">
+</div>
+
+<div class="tabs">
+  <button class="active" data-tab="tab-inputs">Inputs &amp; Summary</button>
+  <button data-tab="tab-tickets">🎟 Ticket types</button>
+  <button data-tab="tab-chart">Revenue Chart</button>
+  <button data-tab="tab-actuals">📊 Actuals</button>
+  <button data-tab="tab-compare">🔍 Compare Shows</button>
+</div>
+
+<!-- ============== Tab 1: Inputs & Summary ============== -->
+<div class="tab-panel active" id="tab-inputs">
+  <div class="layout">
+    <div>
+      <div class="card">
+        <div class="card-header">🎪 Show details</div>
+        <div class="card-body">
+          <div class="row">
+            <label class="field"><span>Show title</span>
+              <input type="text" id="showTitle" value="My Show" style="width: 200px;"></label>
+            <label class="field"><span>Starting balance (£)</span>
+              <input type="number" id="startingBalance" step="0.01" value="0"></label>
+            <label class="field"><span>Show status</span>
+              <select id="showStatus" style="width:180px;">
+                <option value="planning">Planning</option>
+                <option value="in-run">In run</option>
+                <option value="completed">Completed (historic)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="costCards"></div>
+
+      <div class="card">
+        <div class="card-header">📖 Programmes</div>
+        <div class="card-body">
+          <div class="row">
+            <label class="field"><span>Unit print cost (£)</span>
+              <input type="number" id="progUnit" step="0.01" value="1.50"></label>
+            <label class="field"><span>Print run</span>
+              <input type="number" id="progRun" step="1" value="500"></label>
+            <label class="field"><span>Sale price (£)</span>
+              <input type="number" id="progPrice" step="0.01" value="3.00"></label>
+            <label class="field"><span>Total print cost</span>
+              <span class="value" id="progPrintCost" style="font-weight:600">£0.00</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">🎟 Performance defaults</div>
+        <div class="card-body">
+          <p class="info-panel">
+            Prices per ticket type are set per performance in the table below.
+            To change which types are available, use the <strong>Ticket types</strong> tab.
+          </p>
+          <div class="row">
+            <label class="field"><span>Seats per performance</span>
+              <input type="number" id="seatsDefault" step="1" value="200"></label>
+            <label class="field"><span>Royalty on tickets (%)</span>
+              <input type="number" id="royaltyPct" step="0.1" value="10"></label>
+            <label class="field"><span>Number of performances</span>
+              <input type="number" id="numPerf" step="1" min="1" value="6"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          🎬 Per-performance forecasts
+          <span style="font-weight:400; color:var(--text-muted); font-size:12px;" id="perfActiveTypes"></span>
+        </div>
+        <div class="card-body">
+          <p style="color:var(--text-muted); margin: 0 0 12px; font-size: 12px;">
+            Label each performance, set prices per ticket type, then slide to forecast sales.
+            Total across types is capped at 100% capacity.
+          </p>
+          <div class="perf-table" id="perfTable"></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="position: sticky; top: 20px;">
+        <div class="card-header">
+          Forecast summary
+          <div style="font-size: 12px; font-weight: 400; color: var(--text-muted); margin-top: 3px;">
+            Live totals — updates as you type or slide.
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="info-row"><span class="label">Total capacity</span>
+            <span class="value" id="sumCapacity">0</span></div>
+          <div class="info-row" style="margin-bottom: 12px;">
+            <span class="label">Tickets forecast sold</span>
+            <span class="value" id="sumSold">0 of 0</span></div>
+
+          <div class="summary-section income">
+            <div class="section-heading">📈 Income</div>
+            <div id="sumIncomeLines"></div>
+            <div class="subtotal">
+              <span>Total income</span>
+              <span id="sumTotalIncome">£0.00</span>
+            </div>
+          </div>
+
+          <div class="summary-section costs">
+            <div class="section-heading">📉 Costs</div>
+            <div class="line"><span class="label">Production costs</span>
+              <span class="value" id="sumProdCosts">£0.00</span></div>
+            <div class="line"><span class="label">Programme print run</span>
+              <span class="value" id="sumProgPrint">£0.00</span></div>
+            <div class="line"><span class="label">Royalties payable</span>
+              <span class="value" id="sumRoyalty">£0.00</span></div>
+            <div class="subtotal">
+              <span>Total costs</span>
+              <span id="sumTotalCosts">£0.00</span>
+            </div>
+          </div>
+
+          <div class="totals-block">
+            <div class="totals-row">
+              <span class="label">Show net (P&amp;L)</span>
+              <span class="value" id="sumNet">£0.00</span>
+            </div>
+            <div class="totals-row">
+              <span class="label">+ Starting balance</span>
+              <span class="value" id="sumStart">£0.00</span>
+            </div>
+            <hr class="split">
+            <div class="grand-row">
+              <span class="label">Final balance</span>
+              <span class="value" id="sumFinal">£0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Tab 2: Ticket types ============== -->
+<div class="tab-panel" id="tab-tickets">
+  <div class="card">
+    <div class="card-header">🎟 Configure ticket types for this show</div>
+    <div class="card-body">
+      <p class="info-panel">
+        Tick which ticket types you'll sell for this show. Each active type gets its own
+        column and slider in the performance table. You can rename them (e.g. "Early bird")
+        and set a default price used for new performances.
+      </p>
+      <div class="ticket-type-list" id="ticketTypeList"></div>
+      <button style="margin-top: 12px;" id="addCustomTypeBtn">+ Add custom ticket type</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Tab 3: Charts ============== -->
+<div class="tab-panel" id="tab-chart">
+  <div class="chart-wrapper">
+    <div class="chart-title">📊 Revenue per performance</div>
+    <div class="chart-subtitle">Stacked bar — one segment per ticket type + programmes.</div>
+    <canvas id="chartCanvas"></canvas>
+    <div class="chart-actions">
+      <button id="refreshChartBtn">🔄 Refresh</button>
+      <button class="primary" id="exportChartBtn2">🖼 Export as image</button>
+    </div>
+  </div>
+  <div class="chart-wrapper">
+    <div class="chart-title">📈 Cumulative income vs. break-even</div>
+    <div class="chart-subtitle">
+      Running total of income. Red dashed line = break-even. Green dots = above break-even.
+    </div>
+    <canvas id="cumulativeChart"></canvas>
+    <div class="chart-actions">
+      <button id="refreshCumBtn">🔄 Refresh</button>
+      <button class="primary" id="exportCumBtn">🖼 Export as image</button>
+      <span id="breakEvenNote" style="margin-left:auto; color: var(--text-muted); font-size: 12px;"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Tab 4: Actuals ============== -->
+<div class="tab-panel" id="tab-actuals">
+  <div id="actualsContent"></div>
+</div>
+
+<!-- ============== Tab 5: Compare ============== -->
+<div class="tab-panel" id="tab-compare">
+  <div class="compare-layout">
+    <div class="compare-side">
+      <div style="font-weight: 600; font-size: 14px;">Shows to compare</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
+        Tick which shows to include on the charts and table.
+      </div>
+      <div class="compare-checkboxes" id="compareCheckboxes"></div>
+      <div style="display: flex; gap: 6px; margin-top: 12px;">
+        <button id="compareSelectAll" style="flex:1;">All</button>
+        <button id="compareSelectNone" style="flex:1;">None</button>
+      </div>
+      <hr style="border: none; border-top: 1px solid var(--border); margin: 14px 0 10px;">
+      <label style="display:flex; align-items:center; gap:8px; font-size: 13px; margin-bottom: 10px;">
+        <input type="checkbox" id="compareUseActuals"> Use actuals where available
+      </label>
+      <button class="primary" id="compareExportPdfBtn" style="width:100%;">📄 Export comparison PDF</button>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-header">📊 Summary comparison</div>
+        <div class="card-body">
+          <div id="compareTableWrap">
+            <div class="empty-state">Select at least one show on the left.</div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrapper">
+        <div class="chart-title">Net P&amp;L by show</div>
+        <canvas id="compareNetChart" class="compare-chart-canvas"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <div class="chart-title">Revenue per performance</div>
+        <canvas id="comparePerfChart" class="compare-chart-canvas"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <div class="chart-title">Cumulative income vs. break-even</div>
+        <canvas id="compareCumChart" class="compare-chart-canvas"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <div class="chart-title">Revenue vs. costs</div>
+        <canvas id="compareRevCostChart" class="compare-chart-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="statusLeft">Ready.</span>
+  <span>
+    <span class="badge" id="networkBadge">● online</span>
+    <span class="badge" id="pwaBadge">PWA ready</span>
+  </span>
+</div>
+
+<!-- Manage shows modal -->
+<div class="modal-backdrop" id="showModalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <span>📁 Manage shows</span>
+      <button class="ghost" id="closeShowModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">
+        Every show is stored in your browser. Create new shows via the wizard,
+        or duplicate an existing one to reuse its setup.
+      </p>
+      <div class="shows-list" id="showsList"></div>
+    </div>
+    <div class="modal-footer">
+      <div></div>
+      <div class="right">
+        <button id="newShowBtn" class="primary">🧙 New show (wizard)</button>
+        <button id="duplicateShowBtn">⧉ Duplicate current</button>
+        <button id="blankShowBtn">+ Blank show</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Wizard modal -->
+<div class="modal-backdrop" id="wizardBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="wizardTitle">🧙 New show wizard</span>
+      <button class="ghost" id="closeWizard">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="wizard-progress" id="wizardProgress"></div>
+      <div id="wizardSteps"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="wizardSkipAll" class="ghost">Skip wizard</button>
+      <div class="right">
+        <button id="wizardBack">← Back</button>
+        <button id="wizardNext" class="primary">Next →</button>
+        <button id="wizardFinish" class="success" hidden>✓ Create show</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ios-hint" id="iosHint">
+  📲 To install: tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.
+  <button id="iosDismiss">Got it</button>
+</div>
+
+<script>
+const CURRENCY = "£";
+const DEFAULT_PERFORMANCES = 6;
+const STORAGE_KEY = "laosForecaster_v5";
+const LEGACY_KEYS = ["laosForecaster_v4", "laosForecaster_v3", "laosForecaster_v2", "laosForecaster"];
+
+const COST_CATEGORIES = [
+  ["🎭 Creative team", ["Director", "Musical Director", "Choreographer", "Lighting Designer"]],
+  ["🔨 Production",    ["Set Hire", "Set Build / Materials", "Props", "Costumes", "Band / Musicians"]],
+  ["👥 Stage crew",    ["Stage Manager", "Deputy Stage Manager", "Assistant Stage Manager", "Other Crew"]],
+  ["📅 Rehearsals",    ["Rehearsal Venue Hire", "Rehearsal Refreshments", "Rehearsal Other"]],
+  ["🏛️ Venue & rights", ["Venue Hire", "Script Hire", "Other / Contingency"]],
+];
+
+// Ticket type library: predefined types users can enable
+const TICKET_TYPE_LIBRARY = [
+  { id: "full",     name: "Full price",  defaultPrice: 15, defaultPct: 45, colour: "#3B5BDB" },
+  { id: "conc",     name: "Concession",  defaultPrice: 12, defaultPct: 20, colour: "#8B5CF6" },
+  { id: "discount", name: "Discounted",  defaultPrice: 10, defaultPct: 0,  colour: "#0EA5A0" },
+  { id: "group",    name: "Group",       defaultPrice: 12, defaultPct: 0,  colour: "#F97316" },
+  { id: "family",   name: "Family",      defaultPrice: 40, defaultPct: 0,  colour: "#EC4899" },
+  { id: "student",  name: "Student",     defaultPrice: 8,  defaultPct: 0,  colour: "#65A30D" },
+  { id: "earlybird",name: "Early bird",  defaultPrice: 13, defaultPct: 0,  colour: "#0284C7" },
+];
+
+const COMPARE_PALETTE = [
+  "#3B5BDB", "#F59F0A", "#0F9D58", "#D6353D", "#8B5CF6",
+  "#0EA5A0", "#EC4899", "#F97316", "#0284C7", "#65A30D",
+];
+
+const appState = { shows: {}, currentShowId: null };
+const state = {
+  costs: {}, performances: [], latest: null,
+  chart: null, cumChart: null, actualsChart: null,
+  compareCharts: {}, compareSelected: new Set(),
+  ticketTypes: [],  // active types for current show: [{id, name, defaultPrice, colour}]
+  wizardStep: 0, wizardData: null,
+};
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => CURRENCY + (Number(n)||0).toLocaleString("en-GB", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2
+});
+const fmtInt = (n) => Number(n||0).toLocaleString("en-GB");
+const safeName = (s) => (s || "show").replace(/[^\w\-\s]/g, "_").trim() || "show";
+const newId = () => "s_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const colourForShow = (i) => COMPARE_PALETTE[i % COMPARE_PALETTE.length];
+const perfLabel = (p, i) => (p && p.label && String(p.label).trim()) ? String(p.label).trim() : `Performance ${i+1}`;
+const perfShort = (p, i) => (p && p.label && String(p.label).trim()) ? String(p.label).trim() : `P${i+1}`;
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+/* ==================================================================
+   Storage & migration
+   ================================================================== */
+function persistAll() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch (_) {}
+}
+function restoreAll() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      appState.shows = data.shows || {};
+      appState.currentShowId = data.currentShowId || null;
+      Object.values(appState.shows).forEach(migrateShow);
+      return;
+    }
+    for (const key of LEGACY_KEYS) {
+      const legacy = localStorage.getItem(key);
+      if (!legacy) continue;
+      const d = JSON.parse(legacy);
+      if (d.shows) {
+        appState.shows = d.shows;
+        appState.currentShowId = d.currentShowId || Object.keys(d.shows)[0];
+      } else {
+        const id = newId();
+        appState.shows[id] = { id, ...d };
+        appState.currentShowId = id;
+      }
+      Object.values(appState.shows).forEach(migrateShow);
+      persistAll();
+      return;
+    }
+  } catch (_) {}
+}
+
+// Bring older shows up to the latest data structure
+function migrateShow(s) {
+  if (!s.costs) s.costs = {};
+  if (s.costs["Costumes"] === undefined) s.costs["Costumes"] = 0;
+  // Ensure all COST_CATEGORIES fields exist
+  for (const [, items] of COST_CATEGORIES) {
+    for (const item of items) if (s.costs[item] === undefined) s.costs[item] = 0;
+  }
+  if (!s.status) s.status = "planning";
+  // Ticket types: if missing, derive from legacy fullPrice/concPrice per performance
+  if (!s.ticketTypes) {
+    s.ticketTypes = [
+      { id: "full", name: "Full price",
+        defaultPrice: (s.performances && s.performances[0]?.fullPrice) ?? 15,
+        colour: "#3B5BDB" },
+      { id: "conc", name: "Concession",
+        defaultPrice: (s.performances && s.performances[0]?.concPrice) ?? 12,
+        colour: "#8B5CF6" },
+    ];
+  }
+  // Performances: migrate legacy fullPrice/concPrice/fullPct/concPct to prices/pcts
+  if (s.performances) {
+    s.performances.forEach(p => {
+      if (!p.prices) {
+        p.prices = {
+          full: p.fullPrice ?? 15,
+          conc: p.concPrice ?? 12,
+        };
+      }
+      if (!p.pcts) {
+        p.pcts = {
+          full: p.fullPct ?? 45,
+          conc: p.concPct ?? 20,
+        };
+      }
+      // Ensure every active ticket type has a price/pct entry
+      s.ticketTypes.forEach(tt => {
+        if (p.prices[tt.id] === undefined) p.prices[tt.id] = tt.defaultPrice;
+        if (p.pcts[tt.id] === undefined) p.pcts[tt.id] = 0;
+      });
+    });
+  }
+  // Actuals structure
+  if (!s.actuals) s.actuals = { enabled: false };
+}
+
+function makeDefaultShow(title, options = {}) {
+  const {
+    startingBalance = 0,
+    numPerformances = DEFAULT_PERFORMANCES,
+    seatsDefault = 200,
+    activeTypeIds = ["full", "conc"],
+    typePrices = {},
+    costs = {},
+    programmeUnitCost = 1.5,
+    programmeSalePrice = 3.0,
+    programmePrintRun = 500,
+    royaltyPercent = 10,
+    status = "planning",
+  } = options;
+
+  const id = newId();
+  const ticketTypes = activeTypeIds.map(tid => {
+    const t = TICKET_TYPE_LIBRARY.find(x => x.id === tid) ||
+              { id: tid, name: tid, defaultPrice: 15, colour: "#666" };
+    return {
+      id: t.id, name: t.name,
+      defaultPrice: (typePrices[tid] ?? t.defaultPrice),
+      colour: t.colour,
+    };
+  });
+
+  const defaultCosts = Object.fromEntries(
+    COST_CATEGORIES.flatMap(([, items]) => items.map(i => [i, costs[i] ?? 0]))
+  );
+
+  const perfs = Array.from({ length: numPerformances }, () => {
+    const prices = {}, pcts = {};
+    ticketTypes.forEach(t => {
+      prices[t.id] = t.defaultPrice;
+      const libT = TICKET_TYPE_LIBRARY.find(x => x.id === t.id);
+      pcts[t.id] = libT ? libT.defaultPct : 0;
+    });
+    return { label: "", seats: seatsDefault, progPct: 50, prices, pcts };
+  });
+
+  return {
+    id, showTitle: title, startingBalance, status,
+    costs: defaultCosts,
+    ticketTypes,
+    programmeUnitCost, programmeSalePrice, programmePrintRun,
+    seatsDefault, royaltyPercent, numPerformances,
+    performances: perfs,
+    actuals: { enabled: false },
+  };
+}
+
+function ensureAtLeastOneShow() {
+  if (Object.keys(appState.shows).length === 0) {
+    const s = makeDefaultShow("My First Show");
+    appState.shows[s.id] = s;
+    appState.currentShowId = s.id;
+    persistAll();
+  }
+  if (!appState.currentShowId || !appState.shows[appState.currentShowId]) {
+    appState.currentShowId = Object.keys(appState.shows)[0];
+  }
+}
+
+function createNewShow(title, { switchTo = true, from = null, wizard = null } = {}) {
+  let show;
+  if (wizard) {
+    show = makeDefaultShow(title, wizard);
+  } else if (from) {
+    show = JSON.parse(JSON.stringify(from));
+    show.id = newId();
+    show.showTitle = title;
+    show.actuals = { enabled: false };  // don't copy actuals
+    show.status = "planning";
+  } else {
+    show = makeDefaultShow(title);
+  }
+  appState.shows[show.id] = show;
+  if (switchTo) appState.currentShowId = show.id;
+  persistAll();
+  refreshShowPicker(); refreshShowsList(); refreshCompareCheckboxes();
+  return show.id;
+}
+function deleteShow(id) {
+  if (!appState.shows[id]) return;
+  if (Object.keys(appState.shows).length === 1) {
+    alert("You need at least one show. Create another before deleting this one.");
+    return;
+  }
+  if (!confirm(`Delete "${appState.shows[id].showTitle}"? This cannot be undone.`)) return;
+  delete appState.shows[id];
+  if (appState.currentShowId === id) {
+    appState.currentShowId = Object.keys(appState.shows)[0];
+    loadShowIntoUi(appState.currentShowId);
+  }
+  state.compareSelected.delete(id);
+  persistAll();
+  refreshShowPicker(); refreshShowsList(); refreshCompareCheckboxes();
+  updateComparison();
+}
+function renameShow(id, newTitle) {
+  if (!appState.shows[id]) return;
+  appState.shows[id].showTitle = newTitle;
+  if (id === appState.currentShowId) $("showTitle").value = newTitle;
+  persistAll();
+  refreshShowPicker(); refreshShowsList(); refreshCompareCheckboxes();
+  updateComparison();
+}
+
+/* ==================================================================
+   Show picker + manage modal
+   ================================================================== */
+function refreshShowPicker() {
+  const sel = $("showPicker");
+  sel.innerHTML = "";
+  Object.values(appState.shows).forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    const statusIcon = s.status === "completed" ? "✓ " : s.status === "in-run" ? "▶ " : "";
+    opt.textContent = statusIcon + (s.showTitle || "(untitled)");
+    if (s.id === appState.currentShowId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+function refreshShowsList() {
+  const host = $("showsList");
+  host.innerHTML = "";
+  Object.values(appState.shows).forEach(s => {
+    const row = document.createElement("div");
+    row.className = "show-row" + (s.id === appState.currentShowId ? " current" : "");
+    const calc = computeFor(s);
+    const statusPill = `<span class="status-pill ${s.status || 'planning'}">${s.status || 'planning'}</span>`;
+    row.innerHTML = `
+      <div style="flex:1;">
+        <div class="name">${escapeHtml(s.showTitle)}${statusPill}</div>
+        <div class="meta">Net ${fmt(calc.showNet)} • ${calc.performances.length} perfs • ${fmtInt(calc.totalCapacity)} seats</div>
+      </div>`;
+    const switchBtn = document.createElement("button");
+    switchBtn.textContent = s.id === appState.currentShowId ? "Current" : "Open";
+    switchBtn.disabled = s.id === appState.currentShowId;
+    switchBtn.onclick = () => { switchShow(s.id); closeShowModal(); };
+    const renameBtn = document.createElement("button");
+    renameBtn.textContent = "Rename";
+    renameBtn.onclick = () => {
+      const nn = prompt("Rename show:", s.showTitle);
+      if (nn && nn.trim()) renameShow(s.id, nn.trim());
+    };
+    const delBtn = document.createElement("button");
+    delBtn.className = "danger"; delBtn.textContent = "🗑";
+    delBtn.onclick = () => deleteShow(s.id);
+    row.appendChild(switchBtn); row.appendChild(renameBtn); row.appendChild(delBtn);
+    host.appendChild(row);
+  });
+}
+function openShowModal() { refreshShowsList(); $("showModalBackdrop").classList.add("show"); }
+function closeShowModal() { $("showModalBackdrop").classList.remove("show"); }
+function switchShow(id) {
+  if (!appState.shows[id] || id === appState.currentShowId) return;
+  saveCurrentShowSnapshotToState();
+  appState.currentShowId = id;
+  loadShowIntoUi(id);
+  persistAll();
+  refreshShowPicker();
+}
+
+/* ==================================================================
+   Cost cards
+   ================================================================== */
+function buildCostCards() {
+  const host = $("costCards");
+  host.innerHTML = "";
+  for (const [section, items] of COST_CATEGORIES) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="card-header">${section}</div>
+      <div class="card-body">
+        <div class="grid-2">
+          ${items.map(item => `
+            <div class="cost-item">
+              <span>${item}</span>
+              <input type="number" step="0.01" data-cost="${escapeHtml(item)}" value="0">
+            </div>`).join("")}
+        </div>
+      </div>`;
+    host.appendChild(card);
+  }
+  host.querySelectorAll("input[data-cost]").forEach(inp => {
+    state.costs[inp.dataset.cost] = 0;
+    inp.addEventListener("input", () => {
+      state.costs[inp.dataset.cost] = parseFloat(inp.value) || 0;
+      recalc();
+    });
+  });
+}
+
+/* ==================================================================
+   Ticket types tab
+   ================================================================== */
+function buildTicketTypesTab() {
+  const host = $("ticketTypeList");
+  host.innerHTML = "";
+  const activeIds = new Set(state.ticketTypes.map(t => t.id));
+
+  // Predefined library types
+  TICKET_TYPE_LIBRARY.forEach(t => {
+    const isActive = activeIds.has(t.id);
+    const currentActive = state.ticketTypes.find(x => x.id === t.id);
+    const row = document.createElement("div");
+    row.className = "ticket-type-row" + (isActive ? " active" : "");
+    row.innerHTML = `
+      <input type="checkbox" ${isActive ? "checked" : ""} data-tt="${t.id}">
+      <span style="width:14px; height:14px; border-radius:3px; background:${t.colour}; display:inline-block;"></span>
+      <input type="text" value="${escapeHtml(currentActive?.name || t.name)}" data-tt-name="${t.id}" placeholder="${t.name}">
+      <span style="color:var(--text-muted); font-size:12px;">Default £</span>
+      <input type="number" step="0.01" value="${currentActive?.defaultPrice ?? t.defaultPrice}" data-tt-price="${t.id}">
+    `;
+    host.appendChild(row);
+  });
+
+  // Custom types (any not in library)
+  state.ticketTypes.filter(t => !TICKET_TYPE_LIBRARY.find(x => x.id === t.id)).forEach(t => {
+    const row = document.createElement("div");
+    row.className = "ticket-type-row active";
+    row.innerHTML = `
+      <input type="checkbox" checked data-tt="${t.id}">
+      <span style="width:14px; height:14px; border-radius:3px; background:${t.colour}; display:inline-block;"></span>
+      <input type="text" value="${escapeHtml(t.name)}" data-tt-name="${t.id}">
+      <span style="color:var(--text-muted); font-size:12px;">Default £</span>
+      <input type="number" step="0.01" value="${t.defaultPrice}" data-tt-price="${t.id}">
+      <button class="danger" data-tt-remove="${t.id}">🗑</button>
+    `;
+    host.appendChild(row);
+  });
+
+  // Wire up
+  host.querySelectorAll("input[data-tt]").forEach(chk => {
+    chk.addEventListener("change", () => {
+      const id = chk.dataset.tt;
+      if (chk.checked) {
+        if (!state.ticketTypes.find(t => t.id === id)) {
+          const lib = TICKET_TYPE_LIBRARY.find(t => t.id === id);
+          if (lib) state.ticketTypes.push({ ...lib });
+        }
+      } else {
+        if (state.ticketTypes.length <= 1) {
+          alert("You need at least one active ticket type."); chk.checked = true; return;
+        }
+        state.ticketTypes = state.ticketTypes.filter(t => t.id !== id);
+      }
+      syncPerformancesWithTicketTypes();
+      buildTicketTypesTab(); buildPerfTable();
+      recalc();
+    });
+  });
+  host.querySelectorAll("input[data-tt-name]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const id = inp.dataset.ttName;
+      const t = state.ticketTypes.find(t => t.id === id);
+      if (t) { t.name = inp.value; buildPerfTable(); recalc(); }
+    });
+  });
+  host.querySelectorAll("input[data-tt-price]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const id = inp.dataset.ttPrice;
+      const t = state.ticketTypes.find(t => t.id === id);
+      if (t) t.defaultPrice = parseFloat(inp.value) || 0;
+    });
+  });
+  host.querySelectorAll("[data-tt-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.ttRemove;
+      if (!confirm("Remove this custom ticket type?")) return;
+      state.ticketTypes = state.ticketTypes.filter(t => t.id !== id);
+      syncPerformancesWithTicketTypes();
+      buildTicketTypesTab(); buildPerfTable(); recalc();
+    });
+  });
+}
+
+function syncPerformancesWithTicketTypes() {
+  state.performances.forEach(p => {
+    if (!p.prices) p.prices = {};
+    if (!p.pcts) p.pcts = {};
+    // Add any new ticket types
+    state.ticketTypes.forEach(t => {
+      if (p.prices[t.id] === undefined) p.prices[t.id] = t.defaultPrice;
+      if (p.pcts[t.id] === undefined) p.pcts[t.id] = 0;
+    });
+    // Remove ticket types no longer active (data stays but not used)
+  });
+}
+
+/* ==================================================================
+   Per-performance table (dynamic columns)
+   ================================================================== */
+function buildPerfTable() {
+  const table = $("perfTable");
+  table.innerHTML = "";
+
+  const n = Math.max(1, parseInt($("numPerf").value) || 1);
+  if (state.performances.length < n) {
+    const seatsDef = parseInt($("seatsDefault").value) || 200;
+    while (state.performances.length < n) {
+      const prices = {}, pcts = {};
+      state.ticketTypes.forEach(t => {
+        prices[t.id] = t.defaultPrice; pcts[t.id] = 0;
+      });
+      state.performances.push({ label: "", seats: seatsDef, progPct: 50, prices, pcts });
+    }
+  } else if (state.performances.length > n) {
+    state.performances.length = n;
+  }
+
+  // Grid template: # | Label | Seats | (Type £ | Type %) * N | Prog % | Income
+  const typeCols = state.ticketTypes.length;
+  const cols = [
+    "50px",              // #
+    "minmax(110px, 1fr)",// label
+    "70px",              // seats
+    ...state.ticketTypes.map(() => "70px minmax(120px, 1.2fr)").join(" ").split(" "),
+    "minmax(120px, 1.2fr)", // programmes
+    "minmax(100px, 1fr)"    // income
+  ].join(" ");
+  table.style.gridTemplateColumns = cols;
+
+  // Header row
+  const headers = [
+    { text: "#", style: "text-align:center;" },
+    { text: "Day / Label" },
+    { text: "Seats" },
+  ];
+  state.ticketTypes.forEach(t => {
+    headers.push({ text: `${t.name} £` });
+    headers.push({ text: `${t.name} % sold` });
+  });
+  headers.push({ text: "Prog % sold" });
+  headers.push({ text: "Est. income", style: "text-align:right;" });
+  headers.forEach(h => {
+    const d = document.createElement("div");
+    d.className = "head";
+    if (h.style) d.setAttribute("style", h.style);
+    d.textContent = h.text;
+    table.appendChild(d);
+  });
+
+  // Update active types indicator
+  $("perfActiveTypes").textContent = state.ticketTypes.map(t => t.name).join(" · ");
+
+  // Rows
+  state.performances.forEach((p, i) => {
+    // Ensure all active types have entries
+    state.ticketTypes.forEach(t => {
+      if (p.prices[t.id] === undefined) p.prices[t.id] = t.defaultPrice;
+      if (p.pcts[t.id] === undefined) p.pcts[t.id] = 0;
+    });
+
+    const num = document.createElement("div");
+    num.className = "perf-num"; num.textContent = i + 1;
+    table.appendChild(num);
+    table.appendChild(labelCell(p));
+    table.appendChild(numberCell(v => p.seats = v, p.seats, 1));
+
+    state.ticketTypes.forEach(t => {
+      table.appendChild(numberCell(v => p.prices[t.id] = v, p.prices[t.id], 0.01));
+      table.appendChild(sliderCell(v => p.pcts[t.id] = v, p.pcts[t.id]));
+    });
+    table.appendChild(sliderCell(v => p.progPct = v, p.progPct));
+
+    const inc = document.createElement("div");
+    inc.className = "perf-income";
+    inc.textContent = "£0.00";
+    p._incEl = inc;
+    table.appendChild(inc);
+  });
+  recalc();
+}
+
+function labelCell(p) {
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.value = p.label || "";
+  inp.placeholder = "e.g. Fri eve";
+  inp.addEventListener("input", () => { p.label = inp.value; recalc(); });
+  return inp;
+}
+function numberCell(setter, value, step) {
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.step = step; inp.value = value;
+  inp.addEventListener("input", () => { setter(parseFloat(inp.value) || 0); recalc(); });
+  return inp;
+}
+function sliderCell(setter, value) {
+  const wrap = document.createElement("div");
+  wrap.className = "slider-cell";
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.min = 0; slider.max = 100; slider.value = value;
+  const lbl = document.createElement("span");
+  lbl.className = "pct"; lbl.textContent = `${Math.round(value)}%`;
+  slider.addEventListener("input", () => {
+    const v = parseFloat(slider.value) || 0;
+    setter(v); lbl.textContent = `${Math.round(v)}%`;
+    recalc();
+  });
+  wrap.appendChild(slider); wrap.appendChild(lbl);
+  return wrap;
+}
+
+/* ==================================================================
+   Pure calculation
+   ================================================================== */
+function computeFor(showData) {
+  const startBal = Number(showData.startingBalance) || 0;
+  const fixedCosts = Object.values(showData.costs || {}).reduce((s, v) => s + (Number(v)||0), 0);
+  const progUnit = Number(showData.programmeUnitCost) || 0;
+  const progRun = Number(showData.programmePrintRun) || 0;
+  const progPrice = Number(showData.programmeSalePrice) || 0;
+  const progPrintCost = progUnit * progRun;
+  const totalCosts = fixedCosts + progPrintCost;
+  const royaltyPct = Math.max(0, Math.min(100, Number(showData.royaltyPercent) || 0));
+  const types = showData.ticketTypes || [];
+
+  let ticketIncome = 0, progRevenue = 0, sold = 0, capacity = 0;
+  const perTypeTotals = {};
+  types.forEach(t => perTypeTotals[t.id] = { name: t.name, colour: t.colour, sold: 0, income: 0 });
+
+  const perfData = [];
+  (showData.performances || []).forEach((p, i) => {
+    const seats = Number(p.seats) || 0;
+    const gPct = Math.max(0, Math.min(100, Number(p.progPct) || 0));
+
+    // Sum percentages and scale down proportionally if over 100
+    let totalPct = 0;
+    types.forEach(t => totalPct += Math.max(0, Math.min(100, Number(p.pcts?.[t.id]) || 0)));
+    const scale = totalPct > 100 ? 100 / totalPct : 1;
+
+    const soldByType = {};
+    const incomeByType = {};
+    let ticketInc = 0, soldPerf = 0;
+    types.forEach(t => {
+      const pct = Math.max(0, Math.min(100, Number(p.pcts?.[t.id]) || 0)) * scale;
+      const price = Number(p.prices?.[t.id]) || 0;
+      const s = Math.round(seats * pct / 100);
+      const inc = s * price;
+      soldByType[t.id] = s;
+      incomeByType[t.id] = inc;
+      ticketInc += inc; soldPerf += s;
+      perTypeTotals[t.id].sold += s;
+      perTypeTotals[t.id].income += inc;
+    });
+
+    const progSold = Math.round(soldPerf * gPct / 100);
+    const progRev = progSold * progPrice;
+    const perfTotal = ticketInc + progRev;
+
+    perfData.push({
+      index: i, label: perfLabel(p, i), short: perfShort(p, i),
+      seats, soldByType, incomeByType, prices: { ...p.prices },
+      pcts: { ...p.pcts }, progPct: gPct,
+      ticketsSold: soldPerf, ticketIncome: ticketInc,
+      programmesSold: progSold, programmeRevenue: progRev,
+      totalIncome: perfTotal,
+    });
+    ticketIncome += ticketInc; progRevenue += progRev;
+    sold += soldPerf; capacity += seats;
+  });
+
+  const royalties = ticketIncome * royaltyPct / 100;
+  const totalIncome = ticketIncome + progRevenue;
+  const showNet = totalIncome - royalties - totalCosts;
+  const totalCostsAll = totalCosts + royalties;
+  const finalBalance = startBal + showNet;
+
+  return {
+    showTitle: showData.showTitle || "Show",
+    status: showData.status || "planning",
+    startingBalance: startBal,
+    costBreakdown: { ...(showData.costs || {}) },
+    ticketTypes: types,
+    fixedCosts, programmePrintCost: progPrintCost,
+    programmeUnitCost: progUnit, programmePrintRun: progRun,
+    programmeSalePrice: progPrice,
+    productionCosts: fixedCosts,
+    totalCosts, totalCostsAll,
+    royaltyPercent: royaltyPct, royalties,
+    totalTicketIncome: ticketIncome, totalProgrammeRevenue: progRevenue,
+    totalIncome, totalRevenue: totalIncome,
+    totalTicketsSold: sold, totalCapacity: capacity,
+    perTypeTotals,
+    showNet, finalBalance, performances: perfData,
+  };
+}
+
+// Compute actuals total for a show (using actual sold counts + actual costs where given)
+function computeActualsFor(showData) {
+  if (!showData.actuals || !showData.actuals.enabled) return null;
+  const a = showData.actuals;
+  const startBal = Number(a.startingBalance ?? showData.startingBalance) || 0;
+
+  // Use actual costs where set, otherwise fall back to forecast
+  const costs = { ...(showData.costs || {}), ...(a.costs || {}) };
+  const fixedCosts = Object.values(costs).reduce((s, v) => s + (Number(v)||0), 0);
+
+  const progUnit = Number(a.programmeUnitCost ?? showData.programmeUnitCost) || 0;
+  const progRun = Number(a.programmePrintRun ?? showData.programmePrintRun) || 0;
+  const progPrice = Number(a.programmeSalePrice ?? showData.programmeSalePrice) || 0;
+  const progPrintCost = progUnit * progRun;
+  const totalCosts = fixedCosts + progPrintCost;
+  const royaltyPct = Math.max(0, Math.min(100, Number(a.royaltyPercent ?? showData.royaltyPercent) || 0));
+  const types = showData.ticketTypes || [];
+
+  let ticketIncome = 0, progRevenue = 0, sold = 0, capacity = 0;
+  const perTypeTotals = {};
+  types.forEach(t => perTypeTotals[t.id] = { name: t.name, colour: t.colour, sold: 0, income: 0 });
+
+  const perfData = [];
+  const actualPerfs = a.performances || [];
+  (showData.performances || []).forEach((p, i) => {
+    const ap = actualPerfs[i] || {};
+    const seats = Number(ap.seats ?? p.seats) || 0;
+    const soldByType = {}, incomeByType = {};
+    let ticketInc = 0, soldPerf = 0;
+    types.forEach(t => {
+      const s = Number(ap.soldByType?.[t.id]) || 0;
+      const price = Number(ap.prices?.[t.id] ?? p.prices?.[t.id]) || 0;
+      const inc = s * price;
+      soldByType[t.id] = s; incomeByType[t.id] = inc;
+      ticketInc += inc; soldPerf += s;
+      perTypeTotals[t.id].sold += s;
+      perTypeTotals[t.id].income += inc;
+    });
+    const progSold = Number(ap.programmesSold) || 0;
+    const progRev = progSold * progPrice;
+    const perfTotal = ticketInc + progRev;
+    perfData.push({
+      index: i, label: perfLabel(p, i), short: perfShort(p, i),
+      seats, soldByType, incomeByType,
+      ticketsSold: soldPerf, ticketIncome: ticketInc,
+      programmesSold: progSold, programmeRevenue: progRev,
+      totalIncome: perfTotal,
+    });
+    ticketIncome += ticketInc; progRevenue += progRev;
+    sold += soldPerf; capacity += seats;
+  });
+
+  const royalties = ticketIncome * royaltyPct / 100;
+  const totalIncome = ticketIncome + progRevenue;
+  const showNet = totalIncome - royalties - totalCosts;
+  const totalCostsAll = totalCosts + royalties;
+  const finalBalance = startBal + showNet;
+
+  return {
+    showTitle: (showData.showTitle || "Show") + " — Actuals",
+    startingBalance: startBal,
+    costBreakdown: costs,
+    productionCosts: fixedCosts,
+    programmePrintCost: progPrintCost,
+    programmeUnitCost: progUnit, programmePrintRun: progRun, programmeSalePrice: progPrice,
+    totalCosts, totalCostsAll,
+    royaltyPercent: royaltyPct, royalties,
+    totalTicketIncome: ticketIncome, totalProgrammeRevenue: progRevenue,
+    totalIncome, totalRevenue: totalIncome,
+    totalTicketsSold: sold, totalCapacity: capacity,
+    perTypeTotals,
+    showNet, finalBalance, performances: perfData,
+    ticketTypes: types,
+  };
+}
+
+/* ==================================================================
+   Recalc + summary panel
+   ================================================================== */
+function recalc() {
+  const showData = collectShowDataFromUi();
+  const c = computeFor(showData);
+  $("progPrintCost").textContent = fmt(c.programmePrintCost);
+  state.performances.forEach((p, i) => {
+    if (p._incEl && c.performances[i]) p._incEl.textContent = fmt(c.performances[i].totalIncome);
+  });
+
+  $("sumCapacity").textContent = fmtInt(c.totalCapacity);
+  $("sumSold").textContent = `${fmtInt(c.totalTicketsSold)} of ${fmtInt(c.totalCapacity)}`;
+
+  // Income lines (per ticket type + programmes)
+  const incHost = $("sumIncomeLines");
+  incHost.innerHTML = "";
+  state.ticketTypes.forEach(t => {
+    const line = document.createElement("div");
+    line.className = "line";
+    line.innerHTML = `<span class="label">${escapeHtml(t.name)} sales</span>
+                      <span class="value">${fmt(c.perTypeTotals[t.id]?.income || 0)}</span>`;
+    incHost.appendChild(line);
+  });
+  const progLine = document.createElement("div");
+  progLine.className = "line";
+  progLine.innerHTML = `<span class="label">Programme sales</span>
+                        <span class="value">${fmt(c.totalProgrammeRevenue)}</span>`;
+  incHost.appendChild(progLine);
+  $("sumTotalIncome").textContent = fmt(c.totalIncome);
+
+  $("sumProdCosts").textContent = fmt(c.productionCosts);
+  $("sumProgPrint").textContent = fmt(c.programmePrintCost);
+  $("sumRoyalty").textContent = `${fmt(c.royalties)} (${c.royaltyPercent.toFixed(1)}%)`;
+  $("sumTotalCosts").textContent = fmt(c.totalCostsAll);
+  $("sumStart").textContent = fmt(c.startingBalance);
+  $("sumNet").textContent = fmt(c.showNet);
+  $("sumFinal").textContent = fmt(c.finalBalance);
+  setColour("sumNet", c.showNet);
+  setColour("sumFinal", c.finalBalance);
+
+  const be = breakEvenTickets(c.totalCostsAll, c.royaltyPercent, c.performances);
+  $("statusLeft").textContent =
+    `'${c.showTitle}' [${c.status}] • Break-even ≈ ${fmtInt(be)} tickets • ${new Date().toLocaleTimeString("en-GB")}`;
+
+  state.latest = c;
+  saveCurrentShowSnapshotToState();
+  persistAll();
+  refreshShowPicker();
+  refreshChart(); refreshCumulativeChart();
+  updateComparison();
+}
+function setColour(id, value) {
+  const el = $(id);
+  el.classList.remove("pos", "neg");
+  if (value > 0) el.classList.add("pos");
+  else if (value < 0) el.classList.add("neg");
+}
+function breakEvenTickets(totalCosts, royaltyPct, perfData) {
+  const totalSeats = perfData.reduce((s, p) => s + p.seats, 0);
+  if (!totalSeats) return 0;
+  // Weighted average price across types
+  let weighted = 0, weightSum = 0;
+  perfData.forEach(p => {
+    const types = Object.keys(p.prices || {});
+    types.forEach(tid => {
+      weighted += p.seats * (p.prices[tid] || 0);
+      weightSum += p.seats;
+    });
+  });
+  const avg = weightSum ? weighted / weightSum : 0;
+  const eff = avg * (1 - royaltyPct/100);
+  if (eff <= 0) return 0;
+  return Math.ceil(totalCosts / eff);
+}
+
+/* ==================================================================
+   UI <-> data
+   ================================================================== */
+function collectShowDataFromUi() {
+  return {
+    id: appState.currentShowId,
+    showTitle: $("showTitle").value,
+    startingBalance: parseFloat($("startingBalance").value) || 0,
+    status: $("showStatus").value,
+    costs: { ...state.costs },
+    ticketTypes: JSON.parse(JSON.stringify(state.ticketTypes)),
+    programmeUnitCost:  parseFloat($("progUnit").value)  || 0,
+    programmeSalePrice: parseFloat($("progPrice").value) || 0,
+    programmePrintRun:  parseInt($("progRun").value)     || 0,
+    seatsDefault:       parseInt($("seatsDefault").value) || 0,
+    royaltyPercent:     parseFloat($("royaltyPct").value) || 0,
+    numPerformances:    state.performances.length,
+    performances: state.performances.map(p => ({
+      label: p.label || "", seats: p.seats, progPct: p.progPct,
+      prices: { ...p.prices }, pcts: { ...p.pcts },
+    })),
+    actuals: appState.shows[appState.currentShowId]?.actuals || { enabled: false },
+  };
+}
+function saveCurrentShowSnapshotToState() {
+  if (!appState.currentShowId) return;
+  const existing = appState.shows[appState.currentShowId] || {};
+  const collected = collectShowDataFromUi();
+  // Preserve actuals object (not touched by main tab)
+  collected.actuals = existing.actuals || { enabled: false };
+  appState.shows[appState.currentShowId] = collected;
+}
+function loadShowIntoUi(id) {
+  const d = appState.shows[id];
+  if (!d) return;
+  migrateShow(d);
+  $("showTitle").value = d.showTitle || "My Show";
+  $("startingBalance").value = d.startingBalance ?? 0;
+  $("showStatus").value = d.status || "planning";
+  Object.keys(state.costs).forEach(k => state.costs[k] = 0);
+  Object.entries(d.costs || {}).forEach(([k, v]) => { state.costs[k] = v; });
+  document.querySelectorAll("input[data-cost]").forEach(inp => {
+    inp.value = state.costs[inp.dataset.cost] ?? 0;
+  });
+  $("progUnit").value  = d.programmeUnitCost  ?? 1.5;
+  $("progPrice").value = d.programmeSalePrice ?? 3.0;
+  $("progRun").value   = d.programmePrintRun  ?? 500;
+  $("seatsDefault").value = d.seatsDefault ?? 200;
+  $("royaltyPct").value   = d.royaltyPercent ?? 10;
+  $("numPerf").value = d.numPerformances ?? DEFAULT_PERFORMANCES;
+  state.ticketTypes = JSON.parse(JSON.stringify(d.ticketTypes || []));
+  state.performances = (d.performances || []).map(p => ({
+    label: p.label || "", seats: p.seats, progPct: p.progPct,
+    prices: { ...(p.prices || {}) }, pcts: { ...(p.pcts || {}) },
+  }));
+  buildTicketTypesTab();
+  buildPerfTable();
+  buildActualsTab();
+}
+
+/* ==================================================================
+   Charts (single-show)
+   ================================================================== */
+function chartColours() {
+  const styles = getComputedStyle(document.body);
+  return {
+    ticket: styles.getPropertyValue("--chart-ticket").trim(),
+    prog:   styles.getPropertyValue("--chart-prog").trim(),
+    text:   styles.getPropertyValue("--text").trim(),
+    muted:  styles.getPropertyValue("--text-muted").trim(),
+    border: styles.getPropertyValue("--border").trim(),
+    success:styles.getPropertyValue("--success").trim(),
+    danger: styles.getPropertyValue("--danger").trim(),
+    primary:styles.getPropertyValue("--primary").trim(),
+  };
+}
+function refreshChart() {
+  if (!state.latest) return;
+  const col = chartColours();
+  const c = state.latest;
+  const labels = c.performances.map(p => p.short);
+
+  const datasets = c.ticketTypes.map(t => ({
+    label: t.name,
+    data: c.performances.map(p => p.incomeByType[t.id] || 0),
+    backgroundColor: t.colour || col.ticket,
+    borderRadius: 4,
+  }));
+  datasets.push({
+    label: "Programmes",
+    data: c.performances.map(p => p.programmeRevenue),
+    backgroundColor: col.prog, borderRadius: 4,
+  });
+
+  if (state.chart) state.chart.destroy();
+  state.chart = new Chart($("chartCanvas").getContext("2d"), {
+    type: "bar", data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: col.text } },
+        title: { display: true, text: c.showTitle, color: col.text,
+                 font: { size: 13, weight: "bold" }, padding: { bottom: 10 } },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: col.muted }, grid: { display: false } },
+        y: { stacked: true,
+             ticks: { color: col.muted, callback: (v) => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border } },
+      }
+    }
+  });
+}
+function refreshCumulativeChart() {
+  if (!state.latest) return;
+  const col = chartColours();
+  const c = state.latest;
+  const labels = c.performances.map(p => p.short);
+  let running = 0;
+  const cumIncome = c.performances.map(p => (running += p.totalIncome));
+  const royaltyFrac = Math.min(0.99, (c.royaltyPercent || 0) / 100);
+  const fixedTotal = c.productionCosts + c.programmePrintCost;
+  const be = royaltyFrac > 0 ? fixedTotal / (1 - royaltyFrac) : fixedTotal;
+
+  let crossIdx = -1;
+  for (let i = 0; i < cumIncome.length; i++) {
+    if (cumIncome[i] >= be) { crossIdx = i; break; }
+  }
+  const beNote = $("breakEvenNote");
+  if (crossIdx >= 0) {
+    beNote.textContent = `🎯 Break-even reached at ${c.performances[crossIdx].label}`;
+    beNote.style.color = col.success;
+  } else {
+    const shortfall = be - (cumIncome[cumIncome.length-1] || 0);
+    beNote.textContent = `⚠ Short of break-even by ${fmt(shortfall)}`;
+    beNote.style.color = col.danger;
+  }
+  const pointColours = cumIncome.map(v => v >= be ? col.success : col.danger);
+
+  if (state.cumChart) state.cumChart.destroy();
+  state.cumChart = new Chart($("cumulativeChart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Cumulative income", data: cumIncome,
+          borderColor: col.primary, backgroundColor: col.primary + "20",
+          fill: true, tension: 0.25, pointRadius: 5,
+          pointBackgroundColor: pointColours, pointBorderColor: pointColours,
+          borderWidth: 2.5, order: 1 },
+        { label: `Break-even (${fmt(be)})`, data: labels.map(_ => be),
+          borderColor: col.danger, borderWidth: 2, borderDash: [8, 5],
+          pointRadius: 0, fill: false, order: 0 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: col.text } },
+        title: { display: true, text: c.showTitle, color: col.text,
+                 font: { size: 13, weight: "bold" }, padding: { bottom: 10 } },
+        tooltip: {
+          callbacks: {
+            title: (items) => c.performances[items[0].dataIndex].label,
+            label: (ctx) => {
+              if (ctx.datasetIndex === 1) return `Break-even: ${fmt(ctx.parsed.y)}`;
+              const cum = ctx.parsed.y;
+              const delta = cum - be;
+              return [
+                `Cumulative income: ${fmt(cum)}`,
+                delta >= 0 ? `✅ ${fmt(delta)} above break-even` : `⚠ ${fmt(-delta)} short`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+/* ==================================================================
+   Actuals tab
+   ================================================================== */
+function buildActualsTab() {
+  const showData = appState.shows[appState.currentShowId];
+  if (!showData) return;
+  const host = $("actualsContent");
+
+  const a = showData.actuals || { enabled: false };
+  if (!a.enabled) {
+    host.innerHTML = `
+      <div class="actuals-enable-banner">
+        <div>
+          <div style="font-weight:600; font-size:15px; margin-bottom:4px;">
+            📊 Track actual results for this show
+          </div>
+          <p>Turn this on to capture actual ticket sales, programme sales and final costs
+             alongside your forecast — perfect for both in-run reconciliation and historic shows.</p>
+        </div>
+        <button class="primary" id="enableActualsBtn">Enable actuals</button>
+      </div>`;
+    $("enableActualsBtn").addEventListener("click", () => {
+      initialiseActuals(showData);
+      persistAll(); buildActualsTab();
+    });
+    return;
+  }
+
+  // Actuals enabled — full UI
+  const forecast = computeFor(showData);
+  const actuals  = computeActualsFor(showData);
+
+  host.innerHTML = `
+    <div class="actuals-status-controls">
+      <label>Status:
+        <select id="actStatus">
+          <option value="planning">Planning</option>
+          <option value="in-run">In run</option>
+          <option value="completed">Completed (historic)</option>
+        </select>
+      </label>
+      <button id="disableActualsBtn" class="ghost danger">Disable actuals tracking</button>
+      <button id="copyForecastBtn">📋 Copy forecast → actuals</button>
+      <div style="flex:1;"></div>
+      <span style="font-size:12px; color:var(--text-muted);">Actuals are auto-saved.</span>
+    </div>
+
+    <div class="layout">
+      <div>
+        <div class="card">
+          <div class="card-header">🎬 Per-performance actuals</div>
+          <div class="card-body">
+            <p class="info-panel">
+              Enter the actual number of tickets sold per type and the actual programmes sold.
+              Prices default to forecast but can be overridden per performance.
+            </p>
+            <div class="perf-table" id="actualsPerfTable"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">📉 Actual costs</div>
+          <div class="card-body">
+            <p class="info-panel">
+              Override the forecast costs with actual amounts spent.
+              Values pre-filled with forecast — edit only what changed.
+            </p>
+            <div id="actualsCostCards"></div>
+            <div class="row" style="margin-top:12px;">
+              <label class="field"><span>Prog unit cost (£)</span>
+                <input type="number" step="0.01" id="actProgUnit"></label>
+              <label class="field"><span>Prog print run</span>
+                <input type="number" step="1" id="actProgRun"></label>
+              <label class="field"><span>Prog sale price (£)</span>
+                <input type="number" step="0.01" id="actProgPrice"></label>
+              <label class="field"><span>Royalty (%)</span>
+                <input type="number" step="0.1" id="actRoyalty"></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="position: sticky; top: 20px;">
+          <div class="card-header">Variance: forecast vs actual</div>
+          <div class="card-body">
+            <div id="actualsVarianceTable"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-wrapper" style="margin-top:20px;">
+      <div class="chart-title">📈 Forecast vs Actual — cumulative income</div>
+      <div class="chart-subtitle">Solid line = actuals so far. Dashed line = forecast. Red dashed line = break-even.</div>
+      <canvas id="actualsChart"></canvas>
+    </div>`;
+
+  // Wire status control
+  $("actStatus").value = showData.status || "planning";
+  $("actStatus").addEventListener("change", () => {
+    showData.status = $("actStatus").value;
+    $("showStatus").value = showData.status;
+    persistAll(); refreshShowPicker();
+  });
+  $("disableActualsBtn").addEventListener("click", () => {
+    if (!confirm("Disable actuals tracking? Your entered actuals will be kept but hidden.")) return;
+    showData.actuals.enabled = false;
+    persistAll(); buildActualsTab();
+  });
+  $("copyForecastBtn").addEventListener("click", () => {
+    if (!confirm("Overwrite all actuals with current forecast figures?")) return;
+    copyForecastToActuals(showData);
+    persistAll(); buildActualsTab();
+  });
+
+  // Build the actuals performance table (mirrors main perf table)
+  buildActualsPerfTable(showData);
+
+  // Build actuals cost inputs
+  buildActualsCostInputs(showData);
+
+  // Populate variance
+  renderVarianceTable(forecast, actuals);
+
+  // Render actuals chart
+  renderActualsChart(forecast, actuals);
+}
+
+function initialiseActuals(showData) {
+  showData.actuals = {
+    enabled: true,
+    startingBalance: showData.startingBalance || 0,
+    costs: { ...showData.costs },
+    programmeUnitCost:  showData.programmeUnitCost,
+    programmeSalePrice: showData.programmeSalePrice,
+    programmePrintRun:  showData.programmePrintRun,
+    royaltyPercent:     showData.royaltyPercent,
+    performances: (showData.performances || []).map(p => ({
+      seats: p.seats,
+      soldByType: Object.fromEntries((showData.ticketTypes||[]).map(t => [t.id, 0])),
+      prices: { ...p.prices },
+      programmesSold: 0,
+    })),
+  };
+}
+
+function copyForecastToActuals(showData) {
+  const forecast = computeFor(showData);
+  const a = showData.actuals;
+  a.costs = { ...showData.costs };
+  a.programmeUnitCost = showData.programmeUnitCost;
+  a.programmeSalePrice = showData.programmeSalePrice;
+  a.programmePrintRun = showData.programmePrintRun;
+  a.royaltyPercent = showData.royaltyPercent;
+  a.startingBalance = showData.startingBalance;
+  a.performances = forecast.performances.map((p, i) => ({
+    seats: p.seats,
+    soldByType: { ...p.soldByType },
+    prices: { ...showData.performances[i].prices },
+    programmesSold: p.programmesSold,
+  }));
+}
+
+function buildActualsPerfTable(showData) {
+  const table = $("actualsPerfTable");
+  table.innerHTML = "";
+  const types = showData.ticketTypes || [];
+  const cols = [
+    "50px", "minmax(110px, 1fr)", "70px",
+    ...types.map(() => "70px 80px").join(" ").split(" "),
+    "80px", "minmax(100px, 1fr)"
+  ].join(" ");
+  table.style.gridTemplateColumns = cols;
+
+  const headers = [
+    { text: "#", style: "text-align:center;" },
+    { text: "Day / Label" },
+    { text: "Seats" },
+  ];
+  types.forEach(t => {
+    headers.push({ text: `${t.name} £` });
+    headers.push({ text: `${t.name} sold` });
+  });
+  headers.push({ text: "Progs sold" });
+  headers.push({ text: "Actual income", style: "text-align:right;" });
+  headers.forEach(h => {
+    const d = document.createElement("div");
+    d.className = "head";
+    if (h.style) d.setAttribute("style", h.style);
+    d.textContent = h.text;
+    table.appendChild(d);
+  });
+
+  showData.actuals.performances = showData.actuals.performances || [];
+  // Ensure actuals has an entry per forecast perf
+  while (showData.actuals.performances.length < showData.performances.length) {
+    showData.actuals.performances.push({
+      seats: 0, soldByType: {}, prices: {}, programmesSold: 0
+    });
+  }
+
+  showData.performances.forEach((fp, i) => {
+    const ap = showData.actuals.performances[i];
+    // Sync prices
+    types.forEach(t => {
+      if (ap.prices?.[t.id] === undefined) {
+        ap.prices = ap.prices || {};
+        ap.prices[t.id] = fp.prices[t.id];
+      }
+      if (ap.soldByType?.[t.id] === undefined) {
+        ap.soldByType = ap.soldByType || {};
+        ap.soldByType[t.id] = 0;
+      }
+    });
+
+    const num = document.createElement("div");
+    num.className = "perf-num"; num.textContent = i + 1;
+    table.appendChild(num);
+
+    const lbl = document.createElement("div");
+    lbl.textContent = perfLabel(fp, i);
+    lbl.style.cssText = "font-weight:500; padding:4px 0; color:var(--text-muted);";
+    table.appendChild(lbl);
+
+    const onChange = () => { persistAll(); refreshActualsSummary(); };
+
+    table.appendChild(numberCellRaw(v => { ap.seats = v; onChange(); }, ap.seats || fp.seats, 1));
+    types.forEach(t => {
+      table.appendChild(numberCellRaw(v => { ap.prices[t.id] = v; onChange(); }, ap.prices[t.id], 0.01));
+      table.appendChild(numberCellRaw(v => { ap.soldByType[t.id] = v; onChange(); }, ap.soldByType[t.id] || 0, 1));
+    });
+    table.appendChild(numberCellRaw(v => { ap.programmesSold = v; onChange(); }, ap.programmesSold || 0, 1));
+
+    const inc = document.createElement("div");
+    inc.className = "perf-income";
+    ap._incEl = inc;
+    table.appendChild(inc);
+  });
+  refreshActualsSummary();
+}
+
+function numberCellRaw(setter, value, step) {
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.step = step; inp.value = value;
+  inp.addEventListener("input", () => setter(parseFloat(inp.value) || 0));
+  return inp;
+}
+
+function buildActualsCostInputs(showData) {
+  const host = $("actualsCostCards");
+  host.innerHTML = "";
+  showData.actuals.costs = showData.actuals.costs || {};
+  for (const [section, items] of COST_CATEGORIES) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.marginBottom = "10px";
+    card.innerHTML = `<div class="card-header">${section}</div>
+      <div class="card-body">
+        <div class="grid-2">
+          ${items.map(item => {
+            const v = showData.actuals.costs[item] ?? showData.costs[item] ?? 0;
+            return `<div class="cost-item">
+              <span>${item}</span>
+              <input type="number" step="0.01" data-act-cost="${escapeHtml(item)}" value="${v}">
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+    host.appendChild(card);
+  }
+  host.querySelectorAll("input[data-act-cost]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      showData.actuals.costs[inp.dataset.actCost] = parseFloat(inp.value) || 0;
+      persistAll(); refreshActualsSummary();
+    });
+  });
+  // Programme + royalty inputs
+  const a = showData.actuals;
+  $("actProgUnit").value = a.programmeUnitCost ?? showData.programmeUnitCost;
+  $("actProgRun").value = a.programmePrintRun ?? showData.programmePrintRun;
+  $("actProgPrice").value = a.programmeSalePrice ?? showData.programmeSalePrice;
+  $("actRoyalty").value = a.royaltyPercent ?? showData.royaltyPercent;
+  const wire = (id, key, isInt = false) => {
+    $(id).addEventListener("input", () => {
+      a[key] = isInt ? (parseInt($(id).value) || 0) : (parseFloat($(id).value) || 0);
+      persistAll(); refreshActualsSummary();
+    });
+  };
+  wire("actProgUnit", "programmeUnitCost");
+  wire("actProgRun", "programmePrintRun", true);
+  wire("actProgPrice", "programmeSalePrice");
+  wire("actRoyalty", "royaltyPercent");
+}
+
+function refreshActualsSummary() {
+  const showData = appState.shows[appState.currentShowId];
+  if (!showData || !showData.actuals?.enabled) return;
+  const forecast = computeFor(showData);
+  const actuals = computeActualsFor(showData);
+  // Update per-perf actual income display
+  (showData.actuals.performances || []).forEach((ap, i) => {
+    if (ap._incEl && actuals.performances[i]) {
+      ap._incEl.textContent = fmt(actuals.performances[i].totalIncome);
+    }
+  });
+  renderVarianceTable(forecast, actuals);
+  renderActualsChart(forecast, actuals);
+}
+
+function renderVarianceTable(forecast, actuals) {
+  const host = $("actualsVarianceTable");
+  if (!host) return;
+  const varClass = (v, direction) => {
+    if (Math.abs(v) < 0.005) return "";
+    // For income items: positive variance (actual > forecast) is good
+    // For cost items: positive variance (actual > forecast) is bad
+    const isGood = direction === "income" ? v > 0 : v < 0;
+    return isGood ? "pos" : "neg";
+  };
+  const row = (label, forecastV, actualV, direction = "income", opts = {}) => {
+    const variance = actualV - forecastV;
+    const pct = forecastV !== 0 ? (variance / forecastV) * 100 : 0;
+    const cls = varClass(variance, direction);
+    const pctStr = forecastV !== 0 ? ` (${(pct >= 0 ? "+" : "") + pct.toFixed(1)}%)` : "";
+    const bold = opts.bold ? "font-weight:700;" : "";
+    return `<tr>
+      <td style="${bold}">${escapeHtml(label)}</td>
+      <td style="${bold}">${fmt(forecastV)}</td>
+      <td style="${bold}">${fmt(actualV)}</td>
+      <td class="${cls}" style="${bold}">${fmt(variance)}${pctStr}</td>
+    </tr>`;
+  };
+
+  let html = `<table class="variance">
+    <thead><tr><th>Item</th><th>Forecast</th><th>Actual</th><th>Variance</th></tr></thead>
+    <tbody>
+      <tr class="section-row"><td colspan="4">Income</td></tr>`;
+  forecast.ticketTypes.forEach(t => {
+    html += row(`${t.name} sales`,
+      forecast.perTypeTotals[t.id]?.income || 0,
+      actuals.perTypeTotals[t.id]?.income || 0);
+  });
+  html += row("Programme sales", forecast.totalProgrammeRevenue, actuals.totalProgrammeRevenue);
+  html += row("Total income", forecast.totalIncome, actuals.totalIncome, "income", { bold: true });
+
+  html += `<tr class="section-row"><td colspan="4">Costs</td></tr>`;
+  html += row("Production costs", forecast.productionCosts, actuals.productionCosts, "cost");
+  html += row("Programme print", forecast.programmePrintCost, actuals.programmePrintCost, "cost");
+  html += row("Royalties", forecast.royalties, actuals.royalties, "cost");
+  html += row("Total costs", forecast.totalCostsAll, actuals.totalCostsAll, "cost", { bold: true });
+
+  html += `<tr class="section-row"><td colspan="4">Result</td></tr>`;
+  html += row("Show net (P&L)", forecast.showNet, actuals.showNet, "income", { bold: true });
+  html += row("Final balance", forecast.finalBalance, actuals.finalBalance, "income", { bold: true });
+
+  html += `<tr class="section-row"><td colspan="4">Attendance</td></tr>`;
+  html += `<tr>
+    <td>Tickets sold</td>
+    <td>${fmtInt(forecast.totalTicketsSold)}</td>
+    <td>${fmtInt(actuals.totalTicketsSold)}</td>
+    <td class="${actuals.totalTicketsSold >= forecast.totalTicketsSold ? "pos":"neg"}">
+      ${(actuals.totalTicketsSold - forecast.totalTicketsSold) >= 0 ? "+" : ""}${fmtInt(actuals.totalTicketsSold - forecast.totalTicketsSold)}</td>
+  </tr>`;
+  html += `</tbody></table>`;
+  host.innerHTML = html;
+}
+
+function renderActualsChart(forecast, actuals) {
+  if (!$("actualsChart")) return;
+  const col = chartColours();
+  const labels = forecast.performances.map(p => p.short);
+  let runF = 0, runA = 0;
+  const cumF = forecast.performances.map(p => (runF += p.totalIncome));
+  const cumA = actuals.performances.map(p => (runA += p.totalIncome));
+
+  const royaltyFrac = Math.min(0.99, (forecast.royaltyPercent || 0) / 100);
+  const be = royaltyFrac > 0
+    ? (forecast.productionCosts + forecast.programmePrintCost) / (1 - royaltyFrac)
+    : forecast.productionCosts + forecast.programmePrintCost;
+
+  if (state.actualsChart) state.actualsChart.destroy();
+  state.actualsChart = new Chart($("actualsChart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Actual cumulative", data: cumA, borderColor: col.success,
+          backgroundColor: col.success + "20", tension: 0.25,
+          pointRadius: 5, borderWidth: 2.5, fill: false },
+        { label: "Forecast cumulative", data: cumF, borderColor: col.primary,
+          borderDash: [6, 4], tension: 0.25, pointRadius: 3, borderWidth: 2, fill: false },
+        { label: `Break-even (${fmt(be)})`, data: labels.map(_ => be),
+          borderColor: col.danger, borderWidth: 2, borderDash: [8, 5],
+          pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: col.text } },
+        tooltip: {
+          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+/* ==================================================================
+   Comparison view
+   ================================================================== */
+function refreshCompareCheckboxes() {
+  const host = $("compareCheckboxes");
+  const shows = Object.values(appState.shows);
+  host.innerHTML = "";
+  if (state.compareSelected.size === 0) shows.forEach(s => state.compareSelected.add(s.id));
+  shows.forEach((s, i) => {
+    const lbl = document.createElement("label");
+    const chk = document.createElement("input");
+    chk.type = "checkbox"; chk.value = s.id;
+    chk.checked = state.compareSelected.has(s.id);
+    chk.addEventListener("change", () => {
+      if (chk.checked) state.compareSelected.add(s.id);
+      else state.compareSelected.delete(s.id);
+      updateComparison();
+    });
+    const swatch = document.createElement("span");
+    swatch.className = "colour-swatch";
+    swatch.style.background = colourForShow(i);
+    const name = document.createElement("span");
+    const suffix = s.status === "completed" ? " ✓" : s.status === "in-run" ? " ▶" : "";
+    name.textContent = s.showTitle + suffix;
+    lbl.appendChild(chk); lbl.appendChild(swatch); lbl.appendChild(name);
+    host.appendChild(lbl);
+  });
+}
+function selectedComparisonData() {
+  const useActuals = $("compareUseActuals").checked;
+  const shows = Object.values(appState.shows);
+  const list = [];
+  shows.forEach((s, i) => {
+    if (!state.compareSelected.has(s.id)) return;
+    let calc = computeFor(s);
+    let source = "forecast";
+    if (useActuals && s.actuals?.enabled) {
+      const a = computeActualsFor(s);
+      if (a) { calc = a; source = "actual"; }
+    }
+    list.push({ id: s.id, index: i, colour: colourForShow(i), calc, source });
+  });
+  return list;
+}
+function updateComparison() {
+  const list = selectedComparisonData();
+  renderCompareTable(list);
+  renderCompareNetChart(list);
+  renderComparePerfChart(list);
+  renderCompareCumChart(list);
+  renderCompareRevCostChart(list);
+}
+function renderCompareTable(list) {
+  const wrap = $("compareTableWrap");
+  if (list.length === 0) {
+    wrap.innerHTML = `<div class="empty-state">Select at least one show on the left.</div>`; return;
+  }
+  const rows = list.map(({ colour, calc, source }) => {
+    const netClass = calc.showNet >= 0 ? "pos" : "neg";
+    const finClass = calc.finalBalance >= 0 ? "pos" : "neg";
+    const attendance = calc.totalCapacity
+      ? ((calc.totalTicketsSold / calc.totalCapacity) * 100).toFixed(1) + "%" : "—";
+    const src = source === "actual"
+      ? `<span style="font-size:10px; color:var(--success); font-weight:600; margin-left:4px;">(actual)</span>`
+      : "";
+    return `<tr>
+      <td>
+        <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:${colour}; margin-right:8px; vertical-align: middle;"></span>
+        ${escapeHtml(calc.showTitle.replace(" — Actuals",""))}${src}
+      </td>
+      <td>${calc.performances.length}</td>
+      <td>${fmtInt(calc.totalCapacity)}</td>
+      <td>${attendance}</td>
+      <td>${fmt(calc.totalRevenue)}</td>
+      <td>${fmt(calc.totalCostsAll)}</td>
+      <td>${fmt(calc.royalties)}</td>
+      <td class="${netClass}">${fmt(calc.showNet)}</td>
+      <td class="${finClass}">${fmt(calc.finalBalance)}</td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML = `<table class="compare">
+    <thead><tr>
+      <th>Show</th><th>Perfs</th><th>Capacity</th><th>Attend %</th>
+      <th>Revenue</th><th>Costs</th><th>Royalties</th>
+      <th>Net P&amp;L</th><th>Final bal.</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+function destroyCompareChart(name) {
+  if (state.compareCharts[name]) { state.compareCharts[name].destroy(); state.compareCharts[name] = null; }
+}
+function renderCompareNetChart(list) {
+  destroyCompareChart("net");
+  if (list.length === 0) return;
+  const col = chartColours();
+  state.compareCharts.net = new Chart($("compareNetChart").getContext("2d"), {
+    type: "bar",
+    data: { labels: list.map(x => x.calc.showTitle.replace(" — Actuals","")),
+            datasets: [{ label: "Net P&L", data: list.map(x => x.calc.showNet),
+              backgroundColor: list.map(x => x.colour), borderRadius: 6 }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.parsed.y) } } },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border } }
+      }
+    }
+  });
+}
+function renderComparePerfChart(list) {
+  destroyCompareChart("perf");
+  if (list.length === 0) return;
+  const col = chartColours();
+  const maxPerfs = Math.max(...list.map(x => x.calc.performances.length));
+  const labels = Array.from({ length: maxPerfs }, (_, i) => `P${i+1}`);
+  const datasets = list.map(x => ({
+    label: x.calc.showTitle.replace(" — Actuals",""),
+    data: Array.from({ length: maxPerfs }, (_, i) =>
+      x.calc.performances[i] ? x.calc.performances[i].totalIncome : null),
+    borderColor: x.colour, backgroundColor: x.colour + "33",
+    tension: 0.25, pointRadius: 4, borderWidth: 2, spanGaps: true,
+  }));
+  state.compareCharts.perf = new Chart($("comparePerfChart").getContext("2d"), {
+    type: "line", data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: col.text } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}` } } },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border } }
+      }
+    }
+  });
+}
+function renderCompareCumChart(list) {
+  destroyCompareChart("cum");
+  if (list.length === 0) return;
+  const col = chartColours();
+  const maxPerfs = Math.max(...list.map(x => x.calc.performances.length));
+  const labels = Array.from({ length: maxPerfs }, (_, i) => `P${i+1}`);
+  const datasets = [];
+  list.forEach(x => {
+    let run = 0;
+    const cum = Array.from({ length: maxPerfs }, (_, i) => {
+      if (!x.calc.performances[i]) return null;
+      run += x.calc.performances[i].totalIncome; return run;
+    });
+    datasets.push({
+      label: x.calc.showTitle.replace(" — Actuals",""),
+      data: cum,
+      borderColor: x.colour, backgroundColor: x.colour + "22",
+      tension: 0.25, pointRadius: 3, borderWidth: 2.5, spanGaps: true, order: 1,
+    });
+    const royaltyFrac = Math.min(0.99, (x.calc.royaltyPercent || 0) / 100);
+    const be = royaltyFrac > 0
+      ? (x.calc.productionCosts + x.calc.programmePrintCost) / (1 - royaltyFrac)
+      : x.calc.productionCosts + x.calc.programmePrintCost;
+    datasets.push({
+      label: `${x.calc.showTitle.replace(" — Actuals","")} — break-even`,
+      data: labels.map(_ => be),
+      borderColor: x.colour, backgroundColor: "transparent",
+      borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, tension: 0, order: 0,
+    });
+  });
+  state.compareCharts.cum = new Chart($("compareCumChart").getContext("2d"), {
+    type: "line", data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: col.text, filter: li => !li.text.includes("break-even") } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}` } }
+      },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border }, beginAtZero: true }
+      }
+    }
+  });
+}
+function renderCompareRevCostChart(list) {
+  destroyCompareChart("revCost");
+  if (list.length === 0) return;
+  const col = chartColours();
+  state.compareCharts.revCost = new Chart($("compareRevCostChart").getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: list.map(x => x.calc.showTitle.replace(" — Actuals","")),
+      datasets: [
+        { label: "Revenue", data: list.map(x => x.calc.totalRevenue),
+          backgroundColor: col.success, borderRadius: 6 },
+        { label: "Costs", data: list.map(x => x.calc.totalCostsAll),
+          backgroundColor: col.danger, borderRadius: 6 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: col.text } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}` } } },
+      scales: {
+        x: { ticks: { color: col.muted }, grid: { display: false } },
+        y: { ticks: { color: col.muted, callback: v => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: col.border } }
+      }
+    }
+  });
+}
+
+/* ==================================================================
+   Wizard
+   ================================================================== */
+const WIZARD_STEPS = [
+  { title: "Show basics", desc: "Let's start with the essentials — name, opening finances and run length.", render: renderWizStep1 },
+  { title: "Ticket types", desc: "Which ticket types will you sell? These become the columns and sliders in your forecast.", render: renderWizStep2 },
+  { title: "Creative & production costs", desc: "Enter what you know — you can always refine later.", render: renderWizStep3 },
+  { title: "Crew, rehearsals & venue", desc: "The staff and space costs.", render: renderWizStep4 },
+  { title: "Programmes & royalties", desc: "Programme economics and royalty rate on ticket sales.", render: renderWizStep5 },
+  { title: "Review & create", desc: "Quick sanity check before we make the show.", render: renderWizStep6 },
+];
+
+function openWizard() {
+  state.wizardStep = 0;
+  state.wizardData = {
+    showTitle: "New Show " + (Object.keys(appState.shows).length + 1),
+    startingBalance: 0,
+    numPerformances: DEFAULT_PERFORMANCES,
+    seatsDefault: 200,
+    activeTypeIds: ["full", "conc"],
+    typePrices: {},
+    costs: {},
+    programmeUnitCost: 1.5,
+    programmeSalePrice: 3.0,
+    programmePrintRun: 500,
+    royaltyPercent: 10,
+    status: "planning",
+  };
+  // Build progress dots
+  const prog = $("wizardProgress");
+  prog.innerHTML = "";
+  WIZARD_STEPS.forEach(() => {
+    const d = document.createElement("div"); d.className = "wizard-step-dot";
+    prog.appendChild(d);
+  });
+  // Build step containers
+  const stepsHost = $("wizardSteps");
+  stepsHost.innerHTML = "";
+  WIZARD_STEPS.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "wizard-step"; div.dataset.step = i;
+    stepsHost.appendChild(div);
+  });
+  showWizardStep(0);
+  $("wizardBackdrop").classList.add("show");
+}
+function closeWizard() { $("wizardBackdrop").classList.remove("show"); }
+
+function showWizardStep(i) {
+  state.wizardStep = i;
+  const stepEls = document.querySelectorAll(".wizard-step");
+  stepEls.forEach((el, idx) => el.classList.toggle("active", idx === i));
+  document.querySelectorAll(".wizard-step-dot").forEach((d, idx) => {
+    d.classList.toggle("done", idx < i);
+    d.classList.toggle("current", idx === i);
+  });
+  // Render step body
+  const step = WIZARD_STEPS[i];
+  const container = stepEls[i];
+  container.innerHTML = `
+    <h3 class="wizard-step-title">${escapeHtml(step.title)}</h3>
+    <p class="wizard-step-desc">${escapeHtml(step.desc)}</p>
+    <div id="wizStepBody-${i}"></div>`;
+  step.render($(`wizStepBody-${i}`));
+  // Update button states
+  $("wizardBack").disabled = i === 0;
+  $("wizardNext").hidden = i === WIZARD_STEPS.length - 1;
+  $("wizardFinish").hidden = i !== WIZARD_STEPS.length - 1;
+}
+
+function renderWizStep1(host) {
+  const d = state.wizardData;
+  host.innerHTML = `
+    <div class="field-block">
+      <label>Show title
+        <div class="desc">e.g. "The Wizard of Oz"</div>
+      </label>
+      <input type="text" id="wiz1_title" value="${escapeHtml(d.showTitle)}">
+    </div>
+    <div class="field-block">
+      <label>Starting balance (£)
+        <div class="desc">Money in the society's bank when planning starts.</div>
+      </label>
+      <input type="number" step="0.01" id="wiz1_bal" value="${d.startingBalance}">
+    </div>
+    <div class="field-block">
+      <label>Number of performances
+        <div class="desc">Include matinées, previews, everything paid.</div>
+      </label>
+      <input type="number" step="1" min="1" id="wiz1_perfs" value="${d.numPerformances}">
+    </div>
+    <div class="field-block">
+      <label>Seats per performance
+        <div class="desc">Venue capacity you can actually sell.</div>
+      </label>
+      <input type="number" step="1" id="wiz1_seats" value="${d.seatsDefault}">
+    </div>
+    <div class="field-block">
+      <label>Show status
+        <div class="desc">Historic shows completed in the past track actuals rather than forecasts.</div>
+      </label>
+      <select id="wiz1_status" style="width:180px;">
+        <option value="planning">Planning (forecast only)</option>
+        <option value="in-run">In run (forecast + actuals)</option>
+        <option value="completed">Completed / historic</option>
+      </select>
+    </div>`;
+  $("wiz1_status").value = d.status;
+}
+function captureWizStep1() {
+  const d = state.wizardData;
+  d.showTitle = $("wiz1_title").value.trim() || "Untitled show";
+  d.startingBalance = parseFloat($("wiz1_bal").value) || 0;
+  d.numPerformances = Math.max(1, parseInt($("wiz1_perfs").value) || 1);
+  d.seatsDefault = parseInt($("wiz1_seats").value) || 200;
+  d.status = $("wiz1_status").value;
+}
+
+function renderWizStep2(host) {
+  const d = state.wizardData;
+  host.innerHTML = `
+    <p style="color:var(--text-muted); font-size:13px; margin: 0 0 12px;">
+      Tick which ticket types you plan to sell. Each active type appears as a column
+      in the performance table with its own price and sales slider. You can rename
+      them and change prices later in the Ticket Types tab.
+    </p>
+    <div class="ticket-type-list" id="wiz2_list"></div>`;
+  const host2 = $("wiz2_list");
+  TICKET_TYPE_LIBRARY.forEach(t => {
+    const isActive = d.activeTypeIds.includes(t.id);
+    const row = document.createElement("div");
+    row.className = "ticket-type-row" + (isActive ? " active" : "");
+    row.innerHTML = `
+      <input type="checkbox" ${isActive ? "checked" : ""} data-wiz-tt="${t.id}">
+      <span style="width:14px; height:14px; border-radius:3px; background:${t.colour}; display:inline-block;"></span>
+      <span class="type-name">${escapeHtml(t.name)}</span>
+      <span style="color:var(--text-muted); font-size:12px;">Default £</span>
+      <input type="number" step="0.01" data-wiz-price="${t.id}" value="${d.typePrices[t.id] ?? t.defaultPrice}">
+    `;
+    host2.appendChild(row);
+  });
+  host2.querySelectorAll("input[data-wiz-tt]").forEach(chk => {
+    chk.addEventListener("change", () => {
+      // Update visually
+      chk.closest(".ticket-type-row").classList.toggle("active", chk.checked);
+    });
+  });
+}
+function captureWizStep2() {
+  const d = state.wizardData;
+  d.activeTypeIds = [];
+  d.typePrices = {};
+  document.querySelectorAll("input[data-wiz-tt]").forEach(chk => {
+    if (chk.checked) d.activeTypeIds.push(chk.dataset.wizTt);
+  });
+  document.querySelectorAll("input[data-wiz-price]").forEach(inp => {
+    d.typePrices[inp.dataset.wizPrice] = parseFloat(inp.value) || 0;
+  });
+  if (d.activeTypeIds.length === 0) {
+    alert("Please tick at least one ticket type.");
+    return false;
+  }
+  return true;
+}
+
+function renderWizStep3(host) {
+  const d = state.wizardData;
+  const relevantSections = COST_CATEGORIES.filter(([s]) =>
+    s.includes("Creative") || s.includes("Production"));
+  host.innerHTML = "";
+  relevantSections.forEach(([section, items]) => {
+    const div = document.createElement("div");
+    div.className = "field-block-full";
+    div.innerHTML = `<div style="font-weight:600; font-size:14px; margin-bottom:4px;">${section}</div>
+      <div class="wizard-cost-grid">
+        ${items.map(item => `
+          <div class="wizard-cost-item">
+            <span>${item}</span>
+            <input type="number" step="0.01" data-wiz-cost="${escapeHtml(item)}" value="${d.costs[item] ?? 0}">
+          </div>`).join("")}
+      </div>`;
+    host.appendChild(div);
+  });
+}
+function captureWizStep3() {
+  document.querySelectorAll("input[data-wiz-cost]").forEach(inp => {
+    state.wizardData.costs[inp.dataset.wizCost] = parseFloat(inp.value) || 0;
+  });
+}
+
+function renderWizStep4(host) {
+  const d = state.wizardData;
+  const relevantSections = COST_CATEGORIES.filter(([s]) =>
+    s.includes("Stage crew") || s.includes("Rehearsals") || s.includes("Venue"));
+  host.innerHTML = "";
+  relevantSections.forEach(([section, items]) => {
+    const div = document.createElement("div");
+    div.className = "field-block-full";
+    div.innerHTML = `<div style="font-weight:600; font-size:14px; margin-bottom:4px;">${section}</div>
+      <div class="wizard-cost-grid">
+        ${items.map(item => `
+          <div class="wizard-cost-item">
+            <span>${item}</span>
+            <input type="number" step="0.01" data-wiz-cost="${escapeHtml(item)}" value="${d.costs[item] ?? 0}">
+          </div>`).join("")}
+      </div>`;
+    host.appendChild(div);
+  });
+}
+function captureWizStep4() { captureWizStep3(); }  // same handler
+
+function renderWizStep5(host) {
+  const d = state.wizardData;
+  host.innerHTML = `
+    <div class="field-block">
+      <label>Programme unit print cost (£)
+        <div class="desc">Cost to print one programme.</div></label>
+      <input type="number" step="0.01" id="wiz5_pu" value="${d.programmeUnitCost}">
+    </div>
+    <div class="field-block">
+      <label>Programme print run
+        <div class="desc">How many programmes will you print?</div></label>
+      <input type="number" step="1" id="wiz5_pr" value="${d.programmePrintRun}">
+    </div>
+    <div class="field-block">
+      <label>Programme sale price (£)
+        <div class="desc">What will you sell them for at the door?</div></label>
+      <input type="number" step="0.01" id="wiz5_pp" value="${d.programmeSalePrice}">
+    </div>
+    <div class="field-block">
+      <label>Royalty on ticket sales (%)
+        <div class="desc">Percentage payable to the licence-holder — check your contract.</div></label>
+      <input type="number" step="0.1" id="wiz5_ry" value="${d.royaltyPercent}">
+    </div>`;
+}
+function captureWizStep5() {
+  const d = state.wizardData;
+  d.programmeUnitCost  = parseFloat($("wiz5_pu").value) || 0;
+  d.programmePrintRun  = parseInt($("wiz5_pr").value) || 0;
+  d.programmeSalePrice = parseFloat($("wiz5_pp").value) || 0;
+  d.royaltyPercent     = parseFloat($("wiz5_ry").value) || 0;
+}
+
+function renderWizStep6(host) {
+  const d = state.wizardData;
+  const totalCosts = Object.values(d.costs).reduce((s, v) => s + (Number(v) || 0), 0)
+    + (d.programmeUnitCost * d.programmePrintRun);
+  const activeTypes = d.activeTypeIds.map(id => {
+    const t = TICKET_TYPE_LIBRARY.find(x => x.id === id);
+    return `${t?.name || id} @ £${(d.typePrices[id] ?? t?.defaultPrice ?? 0).toFixed(2)}`;
+  }).join(", ");
+
+  host.innerHTML = `
+    <div class="info-panel">
+      Everything looks good? Click <strong>✓ Create show</strong> to build it,
+      or Back to make tweaks. You can also fine-tune everything after creation.
+    </div>
+    <table class="variance">
+      <tbody>
+        <tr><td>Show title</td><td>${escapeHtml(d.showTitle)}</td></tr>
+        <tr><td>Status</td><td>${d.status}</td></tr>
+        <tr><td>Starting balance</td><td>${fmt(d.startingBalance)}</td></tr>
+        <tr><td>Performances</td><td>${d.numPerformances} × ${d.seatsDefault} seats
+          = ${fmtInt(d.numPerformances * d.seatsDefault)} capacity</td></tr>
+        <tr><td>Ticket types</td><td>${escapeHtml(activeTypes)}</td></tr>
+        <tr><td>Estimated total costs</td><td>${fmt(totalCosts)}</td></tr>
+        <tr><td>Royalty on tickets</td><td>${d.royaltyPercent}%</td></tr>
+      </tbody>
+    </table>`;
+}
+
+function wizardCaptureCurrentStep() {
+  const i = state.wizardStep;
+  if (i === 0) captureWizStep1();
+  else if (i === 1) { if (!captureWizStep2()) return false; }
+  else if (i === 2) captureWizStep3();
+  else if (i === 3) captureWizStep4();
+  else if (i === 4) captureWizStep5();
+  return true;
+}
+
+function wizardFinish() {
+  if (!wizardCaptureCurrentStep()) return;
+  const d = state.wizardData;
+  saveCurrentShowSnapshotToState();
+  const id = createNewShow(d.showTitle, { wizard: d });
+  loadShowIntoUi(id);
+  state.compareSelected.add(id);
+  refreshShowsList(); refreshCompareCheckboxes();
+  closeWizard(); closeShowModal();
+}
+
+/* ==================================================================
+   Exports
+   ================================================================== */
+function exportExcel() {
+  if (!state.latest) recalc();
+  const showData = appState.shows[appState.currentShowId];
+  const c = state.latest;
+  const wb = XLSX.utils.book_new();
+
+  const summaryRows = [
+    [c.showTitle], [`Status: ${c.status}`], [`Generated ${new Date().toLocaleString("en-GB")}`], [],
+    ["Item", "Value"],
+    ["Starting balance", c.startingBalance],
+    ["Total capacity", c.totalCapacity],
+    ["Total tickets sold", c.totalTicketsSold],
+    ["— INCOME —", ""],
+  ];
+  c.ticketTypes.forEach(t => {
+    summaryRows.push([`${t.name} sales`, c.perTypeTotals[t.id]?.income || 0]);
+  });
+  summaryRows.push(["Programme sales", c.totalProgrammeRevenue]);
+  summaryRows.push(["Total income", c.totalIncome]);
+  summaryRows.push(["— COSTS —", ""]);
+  summaryRows.push(["Production costs", c.productionCosts]);
+  summaryRows.push(["Programme print cost", c.programmePrintCost]);
+  summaryRows.push(["Royalties payable", c.royalties]);
+  summaryRows.push(["Total costs", c.totalCostsAll]);
+  summaryRows.push(["", ""]);
+  summaryRows.push(["Show net (P&L)", c.showNet]);
+  summaryRows.push(["Final balance", c.finalBalance]);
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary["!cols"] = [{ wch: 30 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+  const costRows = [["Category", "Item", "Amount (£)"]];
+  for (const [section, items] of COST_CATEGORIES) {
+    const clean = section.replace(/[^\w\s&/-]/g, "").trim();
+    for (const it of items) costRows.push([clean, it, c.costBreakdown[it] || 0]);
+  }
+  costRows.push(["Programme", "Programme print run cost", c.programmePrintCost]);
+  costRows.push(["Royalties", `${c.royaltyPercent}% of ticket sales`, c.royalties]);
+  costRows.push([]);
+  costRows.push(["", "TOTAL COSTS", c.totalCostsAll]);
+  const wsCosts = XLSX.utils.aoa_to_sheet(costRows);
+  wsCosts["!cols"] = [{ wch: 20 }, { wch: 32 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsCosts, "Costs");
+
+  // Performances sheet — dynamic columns per type
+  const perfHead = ["#", "Day / Label", "Seats"];
+  c.ticketTypes.forEach(t => {
+    perfHead.push(`${t.name} £`, `${t.name} % sold`, `${t.name} sold`);
+  });
+  perfHead.push("Total tickets", "Ticket income (£)", "Prog % sold", "Progs sold",
+                "Prog revenue (£)", "Total income (£)", "Cumulative (£)");
+  const perfRows = [perfHead];
+  let run = 0;
+  c.performances.forEach((p, i) => {
+    run += p.totalIncome;
+    const row = [i+1, p.label, p.seats];
+    c.ticketTypes.forEach(t => {
+      row.push(p.prices[t.id] || 0, (p.pcts[t.id] || 0) / 100, p.soldByType[t.id] || 0);
+    });
+    row.push(p.ticketsSold, p.ticketIncome, p.progPct / 100, p.programmesSold,
+             p.programmeRevenue, p.totalIncome, run);
+    perfRows.push(row);
+  });
+  const wsPerf = XLSX.utils.aoa_to_sheet(perfRows);
+  wsPerf["!cols"] = new Array(perfHead.length).fill({ wch: 14 });
+  XLSX.utils.book_append_sheet(wb, wsPerf, "Performances");
+
+  // Actuals sheet if enabled
+  if (showData.actuals?.enabled) {
+    const actuals = computeActualsFor(showData);
+    const varRows = [["Item", "Forecast", "Actual", "Variance"]];
+    varRows.push(["--- Income ---", "", "", ""]);
+    c.ticketTypes.forEach(t => {
+      const f = c.perTypeTotals[t.id]?.income || 0;
+      const a = actuals.perTypeTotals[t.id]?.income || 0;
+      varRows.push([`${t.name} sales`, f, a, a - f]);
+    });
+    varRows.push(["Programme sales", c.totalProgrammeRevenue, actuals.totalProgrammeRevenue,
+                  actuals.totalProgrammeRevenue - c.totalProgrammeRevenue]);
+    varRows.push(["Total income", c.totalIncome, actuals.totalIncome, actuals.totalIncome - c.totalIncome]);
+    varRows.push(["--- Costs ---", "", "", ""]);
+    varRows.push(["Production costs", c.productionCosts, actuals.productionCosts, actuals.productionCosts - c.productionCosts]);
+    varRows.push(["Programme print", c.programmePrintCost, actuals.programmePrintCost, actuals.programmePrintCost - c.programmePrintCost]);
+    varRows.push(["Royalties", c.royalties, actuals.royalties, actuals.royalties - c.royalties]);
+    varRows.push(["Total costs", c.totalCostsAll, actuals.totalCostsAll, actuals.totalCostsAll - c.totalCostsAll]);
+    varRows.push([]);
+    varRows.push(["Show net", c.showNet, actuals.showNet, actuals.showNet - c.showNet]);
+    varRows.push(["Final balance", c.finalBalance, actuals.finalBalance, actuals.finalBalance - c.finalBalance]);
+    const wsAct = XLSX.utils.aoa_to_sheet(varRows);
+    wsAct["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsAct, "Actuals");
+  }
+
+  XLSX.writeFile(wb, `${safeName(c.showTitle)}_forecast.xlsx`);
+  $("statusLeft").textContent = `Excel exported`;
+}
+
+async function exportPdf() {
+  if (!state.latest) recalc();
+  const showData = appState.shows[appState.currentShowId];
+  const c = state.latest;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 40;
+  let y = margin;
+
+  doc.setFont("helvetica", "bold"); doc.setTextColor("#3B5BDB"); doc.setFontSize(22);
+  doc.text("Laos Show Forecaster", margin, y); y += 26;
+  doc.setTextColor("#1F2933"); doc.setFontSize(16);
+  doc.text(c.showTitle + ` [${c.status}]`, margin, y); y += 18;
+  doc.setFont("helvetica", "normal"); doc.setTextColor("#5C6773"); doc.setFontSize(10);
+  doc.text(`Generated ${new Date().toLocaleString("en-GB")}`, margin, y); y += 20;
+
+  // Income
+  const incBody = c.ticketTypes.map(t =>
+    [`${t.name} sales`, fmt(c.perTypeTotals[t.id]?.income || 0)]);
+  incBody.push(["Programme sales", fmt(c.totalProgrammeRevenue)]);
+  incBody.push([{ content: "Total income", styles: { fontStyle: "bold" } },
+                { content: fmt(c.totalIncome), styles: { fontStyle: "bold" } }]);
+  doc.autoTable({
+    startY: y, head: [["INCOME", "Value"]], body: incBody, theme: "grid",
+    headStyles: { fillColor: [15, 157, 88], textColor: 255, fontStyle: "bold" },
+    styles: { fontSize: 10 }, columnStyles: { 1: { halign: "right" } },
+    margin: { left: margin, right: margin },
+  });
+  y = doc.lastAutoTable.finalY + 14;
+
+  doc.autoTable({
+    startY: y, head: [["COSTS", "Value"]],
+    body: [
+      ["Production costs", fmt(c.productionCosts)],
+      ["Programme print", fmt(c.programmePrintCost)],
+      [`Royalties (${c.royaltyPercent}% of tickets)`, fmt(c.royalties)],
+      [{ content: "Total costs", styles: { fontStyle: "bold" } },
+       { content: fmt(c.totalCostsAll), styles: { fontStyle: "bold" } }],
+    ],
+    theme: "grid",
+    headStyles: { fillColor: [214, 53, 61], textColor: 255, fontStyle: "bold" },
+    styles: { fontSize: 10 }, columnStyles: { 1: { halign: "right" } },
+    margin: { left: margin, right: margin },
+  });
+  y = doc.lastAutoTable.finalY + 14;
+
+  const netCol = c.showNet >= 0 ? [15,157,88] : [214,53,61];
+  const finCol = c.finalBalance >= 0 ? [15,157,88] : [214,53,61];
+  doc.autoTable({
+    startY: y,
+    body: [
+      ["Starting balance", fmt(c.startingBalance)],
+      [{ content: "Show net (P&L)", styles: { fontStyle: "bold" } },
+       { content: fmt(c.showNet), styles: { fontStyle: "bold", textColor: netCol } }],
+      [{ content: "FINAL BALANCE", styles: { fontStyle: "bold", fontSize: 12 } },
+       { content: fmt(c.finalBalance), styles: { fontStyle: "bold", fontSize: 12, textColor: finCol } }],
+    ],
+    theme: "grid", styles: { fontSize: 10 }, columnStyles: { 1: { halign: "right" } },
+    margin: { left: margin, right: margin },
+  });
+  y = doc.lastAutoTable.finalY + 20;
+
+  // Variance table if actuals
+  if (showData.actuals?.enabled) {
+    if (y > 600) { doc.addPage(); y = margin; }
+    const actuals = computeActualsFor(showData);
+    const varBody = [];
+    varBody.push([{ content: "Income", colSpan: 4, styles: { fillColor: [238, 241, 245], fontStyle: "bold" } }]);
+    c.ticketTypes.forEach(t => {
+      const f = c.perTypeTotals[t.id]?.income || 0;
+      const a = actuals.perTypeTotals[t.id]?.income || 0;
+      varBody.push([`${t.name} sales`, fmt(f), fmt(a), fmt(a - f)]);
+    });
+    varBody.push(["Total income", fmt(c.totalIncome), fmt(actuals.totalIncome), fmt(actuals.totalIncome - c.totalIncome)]);
+    varBody.push([{ content: "Costs", colSpan: 4, styles: { fillColor: [238, 241, 245], fontStyle: "bold" } }]);
+    varBody.push(["Total costs", fmt(c.totalCostsAll), fmt(actuals.totalCostsAll), fmt(actuals.totalCostsAll - c.totalCostsAll)]);
+    varBody.push([{ content: "Result", colSpan: 4, styles: { fillColor: [238, 241, 245], fontStyle: "bold" } }]);
+    varBody.push(["Show net (P&L)", fmt(c.showNet), fmt(actuals.showNet), fmt(actuals.showNet - c.showNet)]);
+    varBody.push(["Final balance", fmt(c.finalBalance), fmt(actuals.finalBalance), fmt(actuals.finalBalance - c.finalBalance)]);
+    doc.autoTable({
+      startY: y,
+      head: [["Item", "Forecast", "Actual", "Variance"]],
+      body: varBody,
+      theme: "striped",
+      headStyles: { fillColor: [59, 91, 219], textColor: 255, fontStyle: "bold" },
+      styles: { fontSize: 9 },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
+      margin: { left: margin, right: margin },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
+
+  // Charts
+  if (state.chart) {
+    if (y > 500) { doc.addPage(); y = margin; }
+    const img = state.chart.toBase64Image("image/png", 1.0);
+    const imgW = pageW - margin * 2;
+    doc.addImage(img, "PNG", margin, y, imgW, imgW * 0.5);
+    y += imgW * 0.5 + 20;
+  }
+  if (state.cumChart) {
+    if (y > 500) { doc.addPage(); y = margin; }
+    const img = state.cumChart.toBase64Image("image/png", 1.0);
+    const imgW = pageW - margin * 2;
+    doc.addImage(img, "PNG", margin, y, imgW, imgW * 0.5);
+  }
+
+  doc.save(`${safeName(c.showTitle)}_forecast.pdf`);
+  $("statusLeft").textContent = `PDF exported`;
+}
+
+async function exportComparePdf() {
+  const list = selectedComparisonData();
+  if (list.length === 0) { alert("Select at least one show."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 36;
+  let y = margin;
+  doc.setFont("helvetica", "bold"); doc.setTextColor("#3B5BDB"); doc.setFontSize(22);
+  doc.text("Show comparison", margin, y); y += 24;
+  doc.setTextColor("#1F2933"); doc.setFontSize(12);
+  doc.text(`${list.length} show(s) compared`, margin, y); y += 14;
+  doc.setFont("helvetica", "normal"); doc.setTextColor("#5C6773"); doc.setFontSize(10);
+  doc.text(`Generated ${new Date().toLocaleString("en-GB")}`, margin, y); y += 18;
+
+  const body = list.map(({ calc, source }) => {
+    const attend = calc.totalCapacity ? ((calc.totalTicketsSold / calc.totalCapacity) * 100).toFixed(1) + "%" : "—";
+    return [
+      calc.showTitle.replace(" — Actuals","") + (source === "actual" ? " (actual)" : ""),
+      calc.performances.length, fmtInt(calc.totalCapacity), attend,
+      fmt(calc.totalRevenue), fmt(calc.totalCostsAll), fmt(calc.royalties),
+      fmt(calc.showNet), fmt(calc.finalBalance)
+    ];
+  });
+  doc.autoTable({
+    startY: y,
+    head: [["Show", "Perfs", "Capacity", "Attend %", "Revenue", "Costs", "Royalties", "Net P&L", "Final bal."]],
+    body, theme: "striped",
+    headStyles: { fillColor: [59, 91, 219], textColor: 255, fontStyle: "bold" },
+    styles: { fontSize: 10 },
+    columnStyles: Object.fromEntries([1,2,3,4,5,6,7,8].map(i => [i, { halign: "right" }])),
+    margin: { left: margin, right: margin },
+  });
+  y = doc.lastAutoTable.finalY + 20;
+
+  const chartsToInclude = [
+    { chart: state.compareCharts.net, title: "Net P&L by show" },
+    { chart: state.compareCharts.perf, title: "Revenue per performance" },
+    { chart: state.compareCharts.cum, title: "Cumulative income vs. break-even" },
+    { chart: state.compareCharts.revCost, title: "Revenue vs. costs" },
+  ];
+  const imgW = (pageW - margin * 2 - 20) / 2;
+  const imgH = imgW * 0.55;
+  let col = 0;
+  for (const { chart, title } of chartsToInclude) {
+    if (!chart) continue;
+    if (col === 0 && y + imgH + 24 > doc.internal.pageSize.getHeight() - margin) {
+      doc.addPage(); y = margin;
+    }
+    const x = margin + col * (imgW + 20);
+    doc.setFont("helvetica", "bold"); doc.setTextColor("#1F2933"); doc.setFontSize(11);
+    doc.text(title, x, y);
+    doc.addImage(chart.toBase64Image("image/png", 1.0), "PNG", x, y + 6, imgW, imgH);
+    col++;
+    if (col >= 2) { col = 0; y += imgH + 40; }
+  }
+  doc.save(`show_comparison_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+function exportChart() {
+  if (!state.chart) refreshChart();
+  const url = state.chart.toBase64Image("image/png", 1.0);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${safeName(state.latest.showTitle)}_revenue_chart.png`;
+  a.click();
+}
+function exportCumChart() {
+  if (!state.cumChart) refreshCumulativeChart();
+  const url = state.cumChart.toBase64Image("image/png", 1.0);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${safeName(state.latest.showTitle)}_cumulative_chart.png`;
+  a.click();
+}
+
+/* ==================================================================
+   JSON save/load/reset
+   ================================================================== */
+function saveFile() {
+  const snap = collectShowDataFromUi();
+  const blob = new Blob([JSON.stringify(snap, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${safeName($("showTitle").value)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      migrateShow(d);
+      if (confirm(`Load "${d.showTitle || "scenario"}" as a new show? (Cancel to overwrite current.)`)) {
+        const id = newId();
+        appState.shows[id] = { ...d, id };
+        state.compareSelected.add(id);
+        saveCurrentShowSnapshotToState();
+        appState.currentShowId = id;
+        loadShowIntoUi(id);
+      } else {
+        appState.shows[appState.currentShowId] = { ...d, id: appState.currentShowId };
+        loadShowIntoUi(appState.currentShowId);
+      }
+      persistAll();
+      refreshShowPicker(); refreshShowsList(); refreshCompareCheckboxes();
+    } catch (err) { alert("Could not read that file: " + err.message); }
+  };
+  reader.readAsText(file);
+}
+function resetAll() {
+  if (!confirm("Reset all figures for the current show?")) return;
+  const id = appState.currentShowId;
+  const title = appState.shows[id].showTitle;
+  appState.shows[id] = { ...makeDefaultShow(title), id };
+  loadShowIntoUi(id);
+  persistAll();
+}
+
+/* ==================================================================
+   Theme + tabs + PWA
+   ================================================================== */
+function setTheme(theme) {
+  document.body.dataset.theme = theme;
+  $("themeBtn").textContent = theme === "dark" ? "☀ Light mode" : "🌙 Dark mode";
+  document.querySelector('meta[name="theme-color"]').content =
+    theme === "dark" ? "#1B1F27" : "#3B5BDB";
+  refreshChart(); refreshCumulativeChart();
+  updateComparison();
+  const showData = appState.shows[appState.currentShowId];
+  if (showData?.actuals?.enabled) refreshActualsSummary();
+  localStorage.setItem("laosTheme", theme);
+}
+function toggleTheme() {
+  setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+}
+
+document.querySelectorAll(".tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "tab-chart") setTimeout(() => { refreshChart(); refreshCumulativeChart(); }, 40);
+    if (btn.dataset.tab === "tab-compare") { refreshCompareCheckboxes(); setTimeout(updateComparison, 40); }
+    if (btn.dataset.tab === "tab-actuals") setTimeout(buildActualsTab, 40);
+    if (btn.dataset.tab === "tab-tickets") buildTicketTypesTab();
+  });
+});
+
+// Wire main inputs
+["showTitle", "startingBalance", "progUnit", "progRun", "progPrice",
+ "seatsDefault", "royaltyPct", "showStatus"]
+  .forEach(id => $(id).addEventListener("input", recalc));
+$("showStatus").addEventListener("change", recalc);
+$("numPerf").addEventListener("input", buildPerfTable);
+$("themeBtn").addEventListener("click", toggleTheme);
+$("saveBtn").addEventListener("click", saveFile);
+$("loadBtn").addEventListener("click", () => $("loadFile").click());
+$("loadFile").addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+$("exportExcelBtn").addEventListener("click", exportExcel);
+$("exportPdfBtn").addEventListener("click", exportPdf);
+$("exportChartBtn").addEventListener("click", exportChart);
+$("exportChartBtn2").addEventListener("click", exportChart);
+$("exportCumBtn").addEventListener("click", exportCumChart);
+$("refreshChartBtn").addEventListener("click", refreshChart);
+$("refreshCumBtn").addEventListener("click", refreshCumulativeChart);
+$("resetBtn").addEventListener("click", resetAll);
+
+// Show management
+$("showPicker").addEventListener("change", e => switchShow(e.target.value));
+$("manageShowsBtn").addEventListener("click", openShowModal);
+$("closeShowModal").addEventListener("click", closeShowModal);
+$("showModalBackdrop").addEventListener("click", e => {
+  if (e.target === $("showModalBackdrop")) closeShowModal();
+});
+$("newShowBtn").addEventListener("click", () => { closeShowModal(); openWizard(); });
+$("blankShowBtn").addEventListener("click", () => {
+  const name = prompt("New show title:", "Show " + (Object.keys(appState.shows).length + 1));
+  if (!name) return;
+  saveCurrentShowSnapshotToState();
+  const id = createNewShow(name, { switchTo: true });
+  loadShowIntoUi(id);
+  state.compareSelected.add(id);
+  refreshShowsList(); refreshCompareCheckboxes(); closeShowModal();
+});
+$("duplicateShowBtn").addEventListener("click", () => {
+  saveCurrentShowSnapshotToState();
+  const src = appState.shows[appState.currentShowId];
+  const name = prompt("Duplicate as:", `${src.showTitle} (copy)`);
+  if (!name) return;
+  const id = createNewShow(name, { switchTo: true, from: src });
+  loadShowIntoUi(id);
+  state.compareSelected.add(id);
+  refreshShowsList(); refreshCompareCheckboxes(); closeShowModal();
+});
+$("quickWizardBtn").addEventListener("click", openWizard);
+
+// Wizard buttons
+$("closeWizard").addEventListener("click", closeWizard);
+$("wizardBackdrop").addEventListener("click", e => {
+  if (e.target === $("wizardBackdrop")) closeWizard();
+});
+$("wizardBack").addEventListener("click", () => {
+  wizardCaptureCurrentStep();
+  if (state.wizardStep > 0) showWizardStep(state.wizardStep - 1);
+});
+$("wizardNext").addEventListener("click", () => {
+  if (!wizardCaptureCurrentStep()) return;
+  if (state.wizardStep < WIZARD_STEPS.length - 1) showWizardStep(state.wizardStep + 1);
+});
+$("wizardFinish").addEventListener("click", wizardFinish);
+$("wizardSkipAll").addEventListener("click", () => {
+  const name = state.wizardData?.showTitle ||
+    "Show " + (Object.keys(appState.shows).length + 1);
+  saveCurrentShowSnapshotToState();
+  const id = createNewShow(name, { switchTo: true });
+  loadShowIntoUi(id);
+  state.compareSelected.add(id);
+  refreshShowsList(); refreshCompareCheckboxes(); closeWizard();
+});
+
+// Ticket types tab
+$("addCustomTypeBtn").addEventListener("click", () => {
+  const name = prompt("Custom ticket type name:", "Preview");
+  if (!name || !name.trim()) return;
+  const id = "custom_" + Math.random().toString(36).slice(2, 8);
+  state.ticketTypes.push({ id, name: name.trim(), defaultPrice: 10, colour: "#666" });
+  syncPerformancesWithTicketTypes();
+  buildTicketTypesTab(); buildPerfTable(); recalc();
+});
+
+// Comparison
+$("compareSelectAll").addEventListener("click", () => {
+  Object.keys(appState.shows).forEach(id => state.compareSelected.add(id));
+  refreshCompareCheckboxes(); updateComparison();
+});
+$("compareSelectNone").addEventListener("click", () => {
+  state.compareSelected.clear();
+  refreshCompareCheckboxes(); updateComparison();
+});
+$("compareUseActuals").addEventListener("change", updateComparison);
+$("compareExportPdfBtn").addEventListener("click", exportComparePdf);
+
+// PWA
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .then(_ => { $("pwaBadge").textContent = "PWA installed"; })
+      .catch(_ => { $("pwaBadge").textContent = "PWA unavailable"; });
+  });
+}
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault(); deferredPrompt = e; $("installBtn").hidden = false;
+});
+$("installBtn").addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice;
+  if (choice.outcome === "accepted") $("installBtn").hidden = true;
+  deferredPrompt = null;
+});
+window.addEventListener("appinstalled", () => {
+  $("installBtn").hidden = true; $("pwaBadge").textContent = "PWA installed ✓";
+});
+function maybeShowIosHint() {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+                       || window.navigator.standalone;
+  const dismissed = localStorage.getItem("iosHintDismissed") === "1";
+  if (isIos && !isStandalone && !dismissed) {
+    setTimeout(() => $("iosHint").classList.add("show"), 2000);
+  }
+}
+$("iosDismiss").addEventListener("click", () => {
+  $("iosHint").classList.remove("show");
+  localStorage.setItem("iosHintDismissed", "1");
+});
+function updateNetworkBadge() {
+  const b = $("networkBadge");
+  if (navigator.onLine) { b.textContent = "● online"; b.className = "badge online"; }
+  else { b.textContent = "● offline (still working)"; b.className = "badge offline"; }
+}
+window.addEventListener("online", updateNetworkBadge);
+window.addEventListener("offline", updateNetworkBadge);
+
+/* Init */
+buildCostCards();
+restoreAll();
+ensureAtLeastOneShow();
+loadShowIntoUi(appState.currentShowId);
+refreshShowPicker();
+refreshCompareCheckboxes();
+const savedTheme = localStorage.getItem("laosTheme");
+if (savedTheme) setTheme(savedTheme);
+updateNetworkBadge();
+maybeShowIosHint();
+</script>
+</body>
+</html>
