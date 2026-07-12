@@ -1,0 +1,33 @@
+{
+  "name": "Laos Show Forecaster",
+  "short_name": "Laos Forecaster",
+  "description": "Plan the numbers before you hit opening night — forecast amateur theatre show costs, ticket revenue and programme sales.",
+  "start_url": "./laos_show_forecaster.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F4F5F7",
+  "theme_color": "#3B5BDB",
+  "lang": "en-GB",
+  "categories": ["finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

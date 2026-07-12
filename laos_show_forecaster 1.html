@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laos Show Forecaster</title>
+
+<!-- PWA: manifest, theme colour, Apple touch icon -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3B5BDB">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Laos Forecaster">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!-- Chart.js and SheetJS via CDN – cached by the service worker on first load. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+  /* ---------- Colour tokens (light + dark) ---------- */
+  :root {
+    --bg: #F4F5F7;
+    --surface: #FFFFFF;
+    --surface-alt: #EEF1F5;
+    --border: #D8DEE6;
+    --text: #1F2933;
+    --text-muted: #5C6773;
+    --primary: #3B5BDB;
+    --primary-hover: #324DBF;
+    --accent: #0EA5A0;
+    --success: #0F9D58;
+    --danger: #D6353D;
+    --warning: #F59F0A;
+    --chart-ticket: #3B5BDB;
+    --chart-prog: #F59F0A;
+    --shadow: 0 2px 8px rgba(30,50,90,0.06);
+  }
+  [data-theme="dark"] {
+    --bg: #1B1F27;
+    --surface: #242A34;
+    --surface-alt: #2C333F;
+    --border: #3A424F;
+    --text: #E7ECF3;
+    --text-muted: #9AA5B4;
+    --primary: #6B8CFF;
+    --primary-hover: #8AA3FF;
+    --accent: #3ADFD9;
+    --success: #5CE0A0;
+    --danger: #FF6B72;
+    --warning: #FFC96B;
+    --chart-ticket: #6B8CFF;
+    --chart-prog: #FFC96B;
+    --shadow: 0 2px 12px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    transition: background .25s ease, color .25s ease;
+  }
+
+  header {
+    background: var(--surface-alt);
+    padding: 20px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header .brand h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+  header .brand p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+  header .title-input { display: flex; flex-direction: column; gap: 6px; }
+  header .title-input label { font-size: 12px; color: var(--text-muted); }
+
+  .toolbar {
+    display: flex; gap: 8px; padding: 12px 32px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; align-items: center;
+  }
+  .toolbar .spacer { flex: 1; }
+
+  button {
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    cursor: pointer; transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover { background: var(--surface-alt); }
+  button.primary {
+    background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600;
+  }
+  button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  button.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+  button.ghost:hover { background: var(--surface-alt); color: var(--text); }
+  button.install {
+    background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+  }
+  button[hidden] { display: none !important; }
+
+  .tabs {
+    display: flex; padding: 0 32px;
+    border-bottom: 1px solid var(--border); background: var(--bg); gap: 4px;
+  }
+  .tabs button {
+    background: transparent; border: none; border-radius: 0;
+    padding: 12px 20px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-panel { display: none; padding: 20px 32px 40px; }
+  .tab-panel.active { display: block; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr);
+    gap: 20px;
+  }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 16px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 18px 10px; font-size: 14px; font-weight: 600;
+    color: var(--text); border-bottom: 1px solid var(--border);
+  }
+  .card-body { padding: 16px 18px 18px; }
+
+  label.field {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 6px 0; font-size: 13px; color: var(--text);
+  }
+  label.field span { flex: 1; }
+  input[type="text"], input[type="number"] {
+    width: 120px; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--surface); color: var(--text);
+    text-align: right; font-family: inherit; font-size: 13px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input[type="text"] { text-align: left; }
+  input:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+  input.title {
+    font-size: 16px; font-weight: 600; width: 240px; text-align: left; padding: 8px 12px;
+  }
+
+  .grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px;
+  }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    background: var(--surface-alt); border-radius: 3px;
+    outline: none; cursor: pointer; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--surface);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    cursor: pointer; transition: transform .1s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--surface); cursor: pointer;
+  }
+
+  .perf-table {
+    display: grid;
+    grid-template-columns:
+      minmax(120px, 1fr) 70px 70px minmax(140px, 1.4fr)
+      70px minmax(140px, 1.4fr) minmax(140px, 1.4fr) minmax(100px, 1fr);
+    gap: 6px 10px; align-items: center; font-size: 12.5px;
+  }
+  .perf-table .head {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    color: var(--text-muted); letter-spacing: 0.4px; padding: 4px 0 8px;
+  }
+  .perf-table input[type="number"] { width: 100%; padding: 5px 8px; font-size: 12px; }
+  .slider-cell { display: flex; align-items: center; gap: 8px; }
+  .slider-cell input[type="range"] { flex: 1; }
+  .slider-cell .pct {
+    font-variant-numeric: tabular-nums; min-width: 34px;
+    text-align: right; color: var(--text-muted); font-weight: 500;
+  }
+  .perf-income {
+    text-align: right; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  .perf-row-name { font-weight: 500; }
+
+  .summary-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; font-size: 13px;
+  }
+  .summary-row .label { color: var(--text-muted); }
+  .summary-row .value {
+    font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  hr.split { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+  .big-row {
+    display: flex; justify-content: space-between; align-items: center; padding: 6px 0;
+  }
+  .big-row .label { font-size: 14px; font-weight: 600; }
+  .big-row .value {
+    font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .big-row .value.pos { color: var(--success); }
+  .big-row .value.neg { color: var(--danger); }
+  .help {
+    color: var(--text-muted); font-size: 12px; line-height: 1.5;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+
+  .chart-wrapper {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; box-shadow: var(--shadow);
+  }
+  .chart-actions { display: flex; gap: 8px; margin-top: 12px; }
+  #chartCanvas { width: 100% !important; height: 420px !important; }
+
+  .statusbar {
+    padding: 8px 32px; background: var(--surface-alt); color: var(--text-muted);
+    font-size: 12px; display: flex; justify-content: space-between;
+    border-top: 1px solid var(--border); gap: 12px; flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .badge.online { color: var(--success); }
+  .badge.offline { color: var(--warning); }
+
+  .cost-item {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 5px 0;
+  }
+  .cost-item span { color: var(--text); font-size: 13px; }
+  .cost-item input { width: 110px; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }
+
+  /* iOS install hint */
+  .ios-hint {
+    display: none;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    font-size: 13px; max-width: 90%; z-index: 100;
+  }
+  .ios-hint.show { display: block; }
+  .ios-hint button { margin-left: 8px; padding: 4px 10px; font-size: 12px; }
+</style>
+</head>
+<body data-theme="light">
+
+<header>
+  <div class="brand">
+    <h1>🎭 Laos Show Forecaster</h1>
+    <p>Plan the numbers before you hit opening night.</p>
+  </div>
+  <div class="title-input">
+    <label for="showTitle">Show title</label>
+    <input id="showTitle" class="title" type="text" value="My Show">
+  </div>
+</header>
+
+<div class="toolbar">
+  <button class="ghost" id="themeBtn">🌙 Dark mode</button>
+  <button class="install" id="installBtn" hidden>⬇ Install app</button>
+  <div class="spacer"></div>
+  <button id="saveBtn">💾 Save</button>
+  <button id="loadBtn">📂 Load</button>
+  <button class="primary" id="exportExcelBtn">📊 Export Excel</button>
+  <button id="exportChartBtn">🖼 Export chart</button>
+  <button id="resetBtn">🗑 Reset</button>
+  <input type="file" id="loadFile" accept=".json" style="display:none">
+</div>
+
+<div class="tabs">
+  <button class="active" data-tab="tab-inputs">Inputs &amp; Summary</button>
+  <button data-tab="tab-chart">Revenue Chart</button>
+</div>
+
+<div class="tab-panel active" id="tab-inputs">
+  <div class="layout">
+    <div>
+      <div class="card">
+        <div class="card-header">💰 Opening position</div>
+        <div class="card-body">
+          <label class="field">
+            <span>Starting balance (£)</span>
+            <input type="number" id="startingBalance" step="0.01" value="0">
+          </label>
+        </div>
+      </div>
+
+      <div id="costCards"></div>
+
+      <div class="card">
+        <div class="card-header">📖 Programmes</div>
+        <div class="card-body">
+          <div class="row">
+            <label class="field"><span>Unit print cost (£)</span>
+              <input type="number" id="progUnit" step="0.01" value="1.50"></label>
+            <label class="field"><span>Print run</span>
+              <input type="number" id="progRun" step="1" value="500"></label>
+            <label class="field"><span>Sale price (£)</span>
+              <input type="number" id="progPrice" step="0.01" value="3.00"></label>
+            <label class="field"><span>Total print cost</span>
+              <span class="value" id="progPrintCost" style="font-weight:600">£0.00</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">🎟 Ticket defaults &amp; performances</div>
+        <div class="card-body">
+          <div class="row">
+            <label class="field"><span>Full price (£)</span>
+              <input type="number" id="fullPriceDefault" step="0.01" value="15.00"></label>
+            <label class="field"><span>Concession price (£)</span>
+              <input type="number" id="concPriceDefault" step="0.01" value="12.00"></label>
+            <label class="field"><span>Seats per performance</span>
+              <input type="number" id="seatsDefault" step="1" value="200"></label>
+            <label class="field"><span>Royalty on tickets (%)</span>
+              <input type="number" id="royaltyPct" step="0.1" value="10"></label>
+            <label class="field"><span>Number of performances</span>
+              <input type="number" id="numPerf" step="1" min="1" value="6"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">🎬 Per-performance forecasts</div>
+        <div class="card-body">
+          <p style="color:var(--text-muted); margin: 0 0 12px; font-size: 12px;">
+            Drag sliders for full-price, concession and programme sales.
+            Full + concession is capped at 100% capacity.
+          </p>
+          <div class="perf-table" id="perfTable">
+            <div class="head">Performance</div>
+            <div class="head">Seats</div>
+            <div class="head">Full £</div>
+            <div class="head">Full % sold</div>
+            <div class="head">Conc £</div>
+            <div class="head">Conc % sold</div>
+            <div class="head">Prog % sold</div>
+            <div class="head" style="text-align:right">Est. income</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="position: sticky; top: 20px;">
+        <div class="card-header">
+          Forecast summary
+          <div style="font-size: 12px; font-weight: 400; color: var(--text-muted); margin-top: 3px;">
+            Live totals — updates as you type or slide.
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="summary-row"><span class="label">Starting balance</span>
+            <span class="value" id="sumStart">£0.00</span></div>
+          <div class="summary-row"><span class="label">Total capacity</span>
+            <span class="value" id="sumCapacity">0</span></div>
+          <div class="summary-row"><span class="label">Tickets forecast sold</span>
+            <span class="value" id="sumSold">0 of 0</span></div>
+          <div class="summary-row"><span class="label">Gross ticket income</span>
+            <span class="value" id="sumTicket">£0.00</span></div>
+          <div class="summary-row"><span class="label">Programme revenue</span>
+            <span class="value" id="sumProg">£0.00</span></div>
+          <div class="summary-row"><span class="label">Royalties payable</span>
+            <span class="value" id="sumRoyalty">£0.00</span></div>
+          <div class="summary-row"><span class="label">Total production costs</span>
+            <span class="value" id="sumCosts">£0.00</span></div>
+          <hr class="split">
+          <div class="big-row"><span class="label">Show net (P&amp;L)</span>
+            <span class="value" id="sumNet">£0.00</span></div>
+          <div class="big-row"><span class="label">Final balance</span>
+            <span class="value" id="sumFinal">£0.00</span></div>
+          <div class="help">
+            Show net = ticket revenue + programme revenue<br>
+            &nbsp;&nbsp; − royalties (% of ticket income)<br>
+            &nbsp;&nbsp; − fixed costs &amp; programme print run.<br>
+            Final balance = starting balance + show net.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="tab-chart">
+  <div class="chart-wrapper">
+    <canvas id="chartCanvas"></canvas>
+    <div class="chart-actions">
+      <button id="refreshChartBtn">🔄 Refresh chart</button>
+      <button class="primary" id="exportChartBtn2">🖼 Export as image</button>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="statusLeft">Ready.</span>
+  <span>
+    <span class="badge" id="networkBadge">● online</span>
+    <span class="badge" id="pwaBadge">PWA ready</span>
+  </span>
+</div>
+
+<div class="ios-hint" id="iosHint">
+  📲 To install: tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.
+  <button id="iosDismiss">Got it</button>
+</div>
+
+<script>
+/* ==================================================================
+   Laos Show Forecaster — vanilla JS + PWA
+   ================================================================== */
+
+const CURRENCY = "£";
+const DEFAULT_PERFORMANCES = 6;
+
+const COST_CATEGORIES = [
+  ["🎭 Creative team", ["Director", "Musical Director", "Choreographer", "Lighting Designer"]],
+  ["🔨 Production",    ["Set Hire", "Set Build / Materials", "Props", "Band / Musicians"]],
+  ["👥 Stage crew",    ["Stage Manager", "Deputy Stage Manager", "Assistant Stage Manager", "Other Crew"]],
+  ["📅 Rehearsals",    ["Rehearsal Venue Hire", "Rehearsal Refreshments", "Rehearsal Other"]],
+  ["🏛️ Venue & rights", ["Venue Hire", "Script Hire", "Other / Contingency"]],
+];
+
+const state = { costs: {}, performances: [], latest: null, chart: null };
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => CURRENCY + (Number(n)||0).toLocaleString("en-GB", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2
+});
+const fmtInt = (n) => Number(n||0).toLocaleString("en-GB");
+const safeName = (s) => (s || "show").replace(/[^\w\-\s]/g, "_").trim() || "show";
+
+/* -------------------- build cost cards -------------------- */
+function buildCostCards() {
+  const host = $("costCards");
+  host.innerHTML = "";
+  for (const [section, items] of COST_CATEGORIES) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="card-header">${section}</div>
+      <div class="card-body">
+        <div class="grid-2">
+          ${items.map(item => `
+            <div class="cost-item">
+              <span>${item}</span>
+              <input type="number" step="0.01" data-cost="${item}" value="0">
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    host.appendChild(card);
+  }
+  host.querySelectorAll("input[data-cost]").forEach(inp => {
+    state.costs[inp.dataset.cost] = 0;
+    inp.addEventListener("input", () => {
+      state.costs[inp.dataset.cost] = parseFloat(inp.value) || 0;
+      recalc();
+    });
+  });
+}
+
+/* -------------------- build performance rows -------------------- */
+function buildPerfRows() {
+  const table = $("perfTable");
+  while (table.children.length > 8) table.removeChild(table.lastChild);
+  const n = Math.max(1, parseInt($("numPerf").value) || 1);
+  state.performances = [];
+  const seatsDef = parseInt($("seatsDefault").value) || 200;
+  const fullDef = parseFloat($("fullPriceDefault").value) || 15;
+  const concDef = parseFloat($("concPriceDefault").value) || 12;
+
+  for (let i = 0; i < n; i++) {
+    const p = {
+      name: `Performance ${i+1}`,
+      seats: seatsDef, fullPrice: fullDef, concPrice: concDef,
+      fullPct: 45, concPct: 20, progPct: 50,
+    };
+    state.performances.push(p);
+    const nameCell = document.createElement("div");
+    nameCell.className = "perf-row-name";
+    nameCell.textContent = p.name;
+    table.appendChild(nameCell);
+    table.appendChild(numberCell(p, "seats", 1));
+    table.appendChild(numberCell(p, "fullPrice", 0.01));
+    table.appendChild(sliderCell(p, "fullPct"));
+    table.appendChild(numberCell(p, "concPrice", 0.01));
+    table.appendChild(sliderCell(p, "concPct"));
+    table.appendChild(sliderCell(p, "progPct"));
+    const inc = document.createElement("div");
+    inc.className = "perf-income";
+    inc.textContent = "£0.00";
+    p._incEl = inc;
+    table.appendChild(inc);
+  }
+  recalc();
+}
+
+function numberCell(p, key, step) {
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.step = step; inp.value = p[key];
+  inp.addEventListener("input", () => { p[key] = parseFloat(inp.value) || 0; recalc(); });
+  return inp;
+}
+function sliderCell(p, key) {
+  const wrap = document.createElement("div");
+  wrap.className = "slider-cell";
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.min = 0; slider.max = 100; slider.value = p[key];
+  const lbl = document.createElement("span");
+  lbl.className = "pct"; lbl.textContent = `${p[key]}%`;
+  slider.addEventListener("input", () => {
+    p[key] = parseFloat(slider.value) || 0;
+    lbl.textContent = `${Math.round(p[key])}%`;
+    recalc();
+  });
+  wrap.appendChild(slider); wrap.appendChild(lbl);
+  return wrap;
+}
+
+/* -------------------- calculate -------------------- */
+function recalc() {
+  const startBal = parseFloat($("startingBalance").value) || 0;
+  const fixedCosts = Object.values(state.costs).reduce((s, v) => s + (v || 0), 0);
+  const progUnit  = parseFloat($("progUnit").value)  || 0;
+  const progRun   = parseInt($("progRun").value)     || 0;
+  const progPrice = parseFloat($("progPrice").value) || 0;
+  const progPrintCost = progUnit * progRun;
+  $("progPrintCost").textContent = fmt(progPrintCost);
+
+  const totalCosts = fixedCosts + progPrintCost;
+  const royaltyPct = Math.max(0, Math.min(100, parseFloat($("royaltyPct").value) || 0));
+
+  let ticketIncome = 0, progRevenue = 0, sold = 0, capacity = 0;
+  const perfData = [];
+
+  for (const p of state.performances) {
+    const seats = parseInt(p.seats) || 0;
+    const full = parseFloat(p.fullPrice) || 0;
+    const conc = parseFloat(p.concPrice) || 0;
+    let fPct = Math.max(0, Math.min(100, p.fullPct));
+    let cPct = Math.max(0, Math.min(100, p.concPct));
+    const gPct = Math.max(0, Math.min(100, p.progPct));
+    if (fPct + cPct > 100 && fPct + cPct > 0) {
+      const scale = 100 / (fPct + cPct);
+      fPct *= scale; cPct *= scale;
+    }
+    const fullSold = Math.round(seats * fPct / 100);
+    const concSold = Math.round(seats * cPct / 100);
+    const soldPerf = fullSold + concSold;
+    const fullInc = fullSold * full;
+    const concInc = concSold * conc;
+    const ticketInc = fullInc + concInc;
+    const progSold = Math.round(soldPerf * gPct / 100);
+    const progRev = progSold * progPrice;
+    const perfTotal = ticketInc + progRev;
+    if (p._incEl) p._incEl.textContent = fmt(perfTotal);
+    perfData.push({
+      name: p.name, seats, fullPrice: full, concPrice: conc,
+      fullPct: p.fullPct, concPct: p.concPct, progPct: p.progPct,
+      fullSold, concSold, ticketsSold: soldPerf,
+      fullIncome: fullInc, concIncome: concInc, ticketIncome: ticketInc,
+      programmesSold: progSold, programmeRevenue: progRev, totalIncome: perfTotal,
+    });
+    ticketIncome += ticketInc; progRevenue += progRev;
+    sold += soldPerf; capacity += seats;
+  }
+
+  const royalties = ticketIncome * royaltyPct / 100;
+  const showNet = ticketIncome + progRevenue - royalties - totalCosts;
+  const finalBal = startBal + showNet;
+
+  $("sumStart").textContent = fmt(startBal);
+  $("sumCapacity").textContent = fmtInt(capacity);
+  $("sumSold").textContent = `${fmtInt(sold)} of ${fmtInt(capacity)}`;
+  $("sumTicket").textContent = fmt(ticketIncome);
+  $("sumProg").textContent = fmt(progRevenue);
+  $("sumRoyalty").textContent = `${fmt(royalties)}  (${royaltyPct.toFixed(1)}%)`;
+  $("sumCosts").textContent = fmt(totalCosts);
+  $("sumNet").textContent = fmt(showNet);
+  $("sumFinal").textContent = fmt(finalBal);
+  setColour("sumNet", showNet); setColour("sumFinal", finalBal);
+
+  const be = breakEvenTickets(totalCosts, royaltyPct, perfData);
+  $("statusLeft").textContent =
+    `'${$("showTitle").value}'  •  Break-even ≈ ${fmtInt(be)} tickets  •  Updated ${new Date().toLocaleTimeString("en-GB")}`;
+
+  state.latest = {
+    showTitle: $("showTitle").value, startingBalance: startBal,
+    costBreakdown: {...state.costs}, fixedCosts, programmePrintCost: progPrintCost,
+    programmeUnitCost: progUnit, programmePrintRun: progRun, programmeSalePrice: progPrice,
+    totalCosts, royaltyPercent: royaltyPct, royalties,
+    totalTicketIncome: ticketIncome, totalProgrammeRevenue: progRevenue,
+    totalTicketsSold: sold, totalCapacity: capacity,
+    showNet, finalBalance: finalBal, performances: perfData,
+  };
+  refreshChart();
+  persistScenario();
+}
+
+function setColour(id, value) {
+  const el = $(id);
+  el.classList.remove("pos", "neg");
+  if (value > 0) el.classList.add("pos");
+  else if (value < 0) el.classList.add("neg");
+}
+function breakEvenTickets(totalCosts, royaltyPct, perfData) {
+  const totalSeats = perfData.reduce((s, p) => s + p.seats, 0);
+  if (!totalSeats) return 0;
+  const weighted = perfData.reduce((s, p) => s + p.seats * ((p.fullPrice + p.concPrice)/2), 0);
+  const avg = weighted / totalSeats;
+  const eff = avg * (1 - royaltyPct/100);
+  if (eff <= 0) return 0;
+  return Math.ceil(totalCosts / eff);
+}
+
+/* -------------------- chart -------------------- */
+function refreshChart() {
+  if (!state.latest) return;
+  const styles = getComputedStyle(document.body);
+  const colTicket = styles.getPropertyValue("--chart-ticket").trim();
+  const colProg   = styles.getPropertyValue("--chart-prog").trim();
+  const colText   = styles.getPropertyValue("--text").trim();
+  const colMuted  = styles.getPropertyValue("--text-muted").trim();
+  const colBorder = styles.getPropertyValue("--border").trim();
+
+  const labels = state.latest.performances.map(p => p.name.replace("Performance ", "P"));
+  const ticket = state.latest.performances.map(p => p.ticketIncome);
+  const prog   = state.latest.performances.map(p => p.programmeRevenue);
+
+  if (state.chart) state.chart.destroy();
+  const ctx = $("chartCanvas").getContext("2d");
+  state.chart = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: [
+      { label: "Tickets",    data: ticket, backgroundColor: colTicket, borderRadius: 6 },
+      { label: "Programmes", data: prog,   backgroundColor: colProg,   borderRadius: 6 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: colText } },
+        title: {
+          display: true, text: `Revenue per performance — ${state.latest.showTitle}`,
+          color: colText, font: { size: 14, weight: "bold" }, padding: { bottom: 14 }
+        },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.parsed.y)}` } }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: colMuted }, grid: { display: false }},
+        y: { stacked: true,
+             ticks: { color: colMuted, callback: (v) => CURRENCY + v.toLocaleString("en-GB") },
+             grid: { color: colBorder, drawBorder: false }},
+      }
+    }
+  });
+}
+
+/* -------------------- export: Excel -------------------- */
+function exportExcel() {
+  if (!state.latest) recalc();
+  const c = state.latest;
+  const wb = XLSX.utils.book_new();
+  const summaryRows = [
+    [c.showTitle],
+    [`Generated ${new Date().toLocaleString("en-GB")}`],
+    [],
+    ["Item", "Value"],
+    ["Starting balance",       c.startingBalance],
+    ["Total capacity",         c.totalCapacity],
+    ["Total tickets sold",     c.totalTicketsSold],
+    ["Gross ticket income",    c.totalTicketIncome],
+    ["Programme revenue",      c.totalProgrammeRevenue],
+    ["Royalties payable",      -c.royalties],
+    ["Fixed production costs", -c.fixedCosts],
+    ["Programme print cost",   -c.programmePrintCost],
+    ["Show net (P&L)",         c.showNet],
+    ["Final balance",          c.finalBalance],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary["!cols"] = [{ wch: 30 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+  const costRows = [["Category", "Item", "Amount (£)"]];
+  for (const [section, items] of COST_CATEGORIES) {
+    const clean = section.replace(/[^\w\s&/-]/g, "").trim();
+    for (const it of items) costRows.push([clean, it, c.costBreakdown[it] || 0]);
+  }
+  costRows.push(["Programme", "Programme print run cost", c.programmePrintCost]);
+  costRows.push([]);
+  costRows.push(["", "TOTAL COSTS", c.totalCosts]);
+  const wsCosts = XLSX.utils.aoa_to_sheet(costRows);
+  wsCosts["!cols"] = [{ wch: 20 }, { wch: 32 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsCosts, "Costs");
+
+  const perfRows = [[
+    "Performance", "Seats",
+    "Full price (£)", "Full % sold", "Full tickets sold",
+    "Conc price (£)", "Conc % sold", "Conc tickets sold",
+    "Total tickets sold", "Ticket income (£)",
+    "Prog % of attendees", "Programmes sold",
+    "Programme revenue (£)", "Total income (£)"
+  ]];
+  for (const p of c.performances) {
+    perfRows.push([
+      p.name, p.seats, p.fullPrice, p.fullPct/100, p.fullSold,
+      p.concPrice, p.concPct/100, p.concSold,
+      p.ticketsSold, p.ticketIncome,
+      p.progPct/100, p.programmesSold,
+      p.programmeRevenue, p.totalIncome,
+    ]);
+  }
+  perfRows.push([
+    "TOTAL", c.totalCapacity, "", "", "", "", "", "",
+    c.totalTicketsSold, c.totalTicketIncome, "", "",
+    c.totalProgrammeRevenue, c.totalTicketIncome + c.totalProgrammeRevenue,
+  ]);
+  const wsPerf = XLSX.utils.aoa_to_sheet(perfRows);
+  wsPerf["!cols"] = new Array(14).fill({ wch: 16 });
+  XLSX.utils.book_append_sheet(wb, wsPerf, "Performances");
+
+  XLSX.writeFile(wb, `${safeName(c.showTitle)}_forecast.xlsx`);
+  $("statusLeft").textContent = `Excel exported (${new Date().toLocaleTimeString("en-GB")})`;
+}
+
+/* -------------------- export: chart image -------------------- */
+function exportChart() {
+  if (!state.chart) refreshChart();
+  const url = state.chart.toBase64Image("image/png", 1.0);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${safeName(state.latest.showTitle)}_revenue_chart.png`;
+  a.click();
+  $("statusLeft").textContent = `Chart exported (${new Date().toLocaleTimeString("en-GB")})`;
+}
+
+/* -------------------- save / load / reset -------------------- */
+function snapshot() {
+  return {
+    showTitle: $("showTitle").value,
+    darkMode: document.body.dataset.theme === "dark",
+    startingBalance: parseFloat($("startingBalance").value) || 0,
+    costs: {...state.costs},
+    programmeUnitCost: parseFloat($("progUnit").value) || 0,
+    programmeSalePrice: parseFloat($("progPrice").value) || 0,
+    programmePrintRun: parseInt($("progRun").value) || 0,
+    fullPriceDefault: parseFloat($("fullPriceDefault").value) || 0,
+    concPriceDefault: parseFloat($("concPriceDefault").value) || 0,
+    seatsDefault: parseInt($("seatsDefault").value) || 0,
+    royaltyPercent: parseFloat($("royaltyPct").value) || 0,
+    numPerformances: state.performances.length,
+    performances: state.performances.map(p => ({
+      seats: p.seats, fullPrice: p.fullPrice, concPrice: p.concPrice,
+      fullPct: p.fullPct, concPct: p.concPct, progPct: p.progPct
+    })),
+  };
+}
+function saveFile() {
+  const blob = new Blob([JSON.stringify(snapshot(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${safeName($("showTitle").value)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { applySnapshot(JSON.parse(e.target.result)); }
+    catch (err) { alert("Could not read that file: " + err.message); }
+  };
+  reader.readAsText(file);
+}
+function applySnapshot(d) {
+  $("showTitle").value = d.showTitle || "My Show";
+  $("startingBalance").value = d.startingBalance || 0;
+  for (const [k, v] of Object.entries(d.costs || {})) {
+    state.costs[k] = v;
+    const inp = document.querySelector(`input[data-cost="${CSS.escape(k)}"]`);
+    if (inp) inp.value = v;
+  }
+  $("progUnit").value = d.programmeUnitCost ?? 1.5;
+  $("progPrice").value = d.programmeSalePrice ?? 3.0;
+  $("progRun").value = d.programmePrintRun ?? 500;
+  $("fullPriceDefault").value = d.fullPriceDefault ?? 15;
+  $("concPriceDefault").value = d.concPriceDefault ?? 12;
+  $("seatsDefault").value = d.seatsDefault ?? 200;
+  $("royaltyPct").value = d.royaltyPercent ?? 10;
+  $("numPerf").value = d.numPerformances ?? DEFAULT_PERFORMANCES;
+  if (d.darkMode !== undefined) setTheme(d.darkMode ? "dark" : "light");
+
+  buildPerfRows();
+  (d.performances || []).forEach((s, i) => {
+    if (state.performances[i]) Object.assign(state.performances[i], s);
+  });
+  buildPerfRows();
+  const inputs = $("perfTable").querySelectorAll("input");
+  let idx = 0;
+  (d.performances || []).forEach(s => {
+    const seatsEl = inputs[idx++]; if (seatsEl) seatsEl.value = s.seats;
+    const fpEl    = inputs[idx++]; if (fpEl)    fpEl.value = s.fullPrice;
+    const fRange  = inputs[idx++]; if (fRange)  { fRange.value = s.fullPct; fRange.dispatchEvent(new Event("input")); }
+    const cpEl    = inputs[idx++]; if (cpEl)    cpEl.value = s.concPrice;
+    const cRange  = inputs[idx++]; if (cRange)  { cRange.value = s.concPct; cRange.dispatchEvent(new Event("input")); }
+    const gRange  = inputs[idx++]; if (gRange)  { gRange.value = s.progPct; gRange.dispatchEvent(new Event("input")); }
+  });
+  recalc();
+}
+function resetAll() {
+  if (!confirm("Clear all figures and start again?")) return;
+  $("showTitle").value = "My Show";
+  $("startingBalance").value = 0;
+  Object.keys(state.costs).forEach(k => state.costs[k] = 0);
+  document.querySelectorAll("input[data-cost]").forEach(i => i.value = 0);
+  $("progUnit").value = 1.5; $("progPrice").value = 3; $("progRun").value = 500;
+  $("fullPriceDefault").value = 15; $("concPriceDefault").value = 12;
+  $("seatsDefault").value = 200; $("royaltyPct").value = 10;
+  $("numPerf").value = DEFAULT_PERFORMANCES;
+  buildPerfRows();
+  localStorage.removeItem("laosForecaster");
+}
+
+/* -------------------- theme -------------------- */
+function setTheme(theme) {
+  document.body.dataset.theme = theme;
+  $("themeBtn").textContent = theme === "dark" ? "☀ Light mode" : "🌙 Dark mode";
+  document.querySelector('meta[name="theme-color"]').content =
+    theme === "dark" ? "#1B1F27" : "#3B5BDB";
+  refreshChart();
+  localStorage.setItem("laosTheme", theme);
+}
+function toggleTheme() {
+  setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+}
+
+/* -------------------- LocalStorage auto-save -------------------- */
+let persistTimer = null;
+function persistScenario() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    try { localStorage.setItem("laosForecaster", JSON.stringify(snapshot())); }
+    catch (_) {}
+  }, 400);
+}
+function restoreScenario() {
+  try {
+    const saved = localStorage.getItem("laosForecaster");
+    if (saved) applySnapshot(JSON.parse(saved));
+  } catch (_) {}
+  const theme = localStorage.getItem("laosTheme");
+  if (theme) setTheme(theme);
+}
+
+/* -------------------- tabs -------------------- */
+document.querySelectorAll(".tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "tab-chart") setTimeout(refreshChart, 40);
+  });
+});
+
+/* -------------------- wire up -------------------- */
+["showTitle", "startingBalance", "progUnit", "progRun", "progPrice",
+ "fullPriceDefault", "concPriceDefault", "seatsDefault", "royaltyPct"]
+  .forEach(id => $(id).addEventListener("input", recalc));
+
+$("numPerf").addEventListener("input", buildPerfRows);
+$("themeBtn").addEventListener("click", toggleTheme);
+$("saveBtn").addEventListener("click", saveFile);
+$("loadBtn").addEventListener("click", () => $("loadFile").click());
+$("loadFile").addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+$("exportExcelBtn").addEventListener("click", exportExcel);
+$("exportChartBtn").addEventListener("click", exportChart);
+$("exportChartBtn2").addEventListener("click", exportChart);
+$("refreshChartBtn").addEventListener("click", refreshChart);
+$("resetBtn").addEventListener("click", resetAll);
+
+/* -------------------- PWA: service worker + install prompt -------------------- */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .then(reg => {
+        console.log("Service worker registered:", reg.scope);
+        $("pwaBadge").textContent = "PWA installed";
+      })
+      .catch(err => {
+        console.warn("SW registration failed:", err);
+        $("pwaBadge").textContent = "PWA unavailable";
+      });
+  });
+}
+
+// Chrome / Edge / Android install button
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $("installBtn").hidden = false;
+});
+$("installBtn").addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice;
+  if (choice.outcome === "accepted") {
+    $("installBtn").hidden = true;
+    $("statusLeft").textContent = "App installed! You can now launch it from your home screen.";
+  }
+  deferredPrompt = null;
+});
+window.addEventListener("appinstalled", () => {
+  $("installBtn").hidden = true;
+  $("pwaBadge").textContent = "PWA installed ✓";
+});
+
+// iOS Safari doesn't support beforeinstallprompt; show a manual hint instead
+function maybeShowIosHint() {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+                       || window.navigator.standalone;
+  const dismissed = localStorage.getItem("iosHintDismissed") === "1";
+  if (isIos && !isStandalone && !dismissed) {
+    setTimeout(() => $("iosHint").classList.add("show"), 2000);
+  }
+}
+$("iosDismiss").addEventListener("click", () => {
+  $("iosHint").classList.remove("show");
+  localStorage.setItem("iosHintDismissed", "1");
+});
+
+// Online/offline badge
+function updateNetworkBadge() {
+  const b = $("networkBadge");
+  if (navigator.onLine) {
+    b.textContent = "● online"; b.className = "badge online";
+  } else {
+    b.textContent = "● offline (still working)"; b.className = "badge offline";
+  }
+}
+window.addEventListener("online", updateNetworkBadge);
+window.addEventListener("offline", updateNetworkBadge);
+
+/* -------------------- init -------------------- */
+buildCostCards();
+buildPerfRows();
+recalc();
+restoreScenario();
+updateNetworkBadge();
+maybeShowIosHint();
+</script>
+</body>
+</html>
